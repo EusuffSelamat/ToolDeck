@@ -3,120 +3,255 @@
 
 @custom-variant dark (&:is(.dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+/* =========================================================================
+   TOOLDECK — UI style guide tokens (§10). Non-negotiable.
+   Dark holographic teal glass. Registered with Tailwind v4 @theme so the
+   tokens generate utilities (bg-teal, text-gold, bg-bg-0, font-display …).
+   ========================================================================= */
+@theme {
+  /* canvas */
+  --color-bg-0: #030a0a;
+  --color-bg-1: #061111;
+
+  /* brand */
+  --color-teal: #19e3c4;
+  --color-teal-bright: #6bffe9;
+  --color-teal-deep: #0e4f4a;
+  --color-gold: #c9a063;
+  --color-magenta: #e06fb2;
+  --color-danger: #e0566b;
+
+  /* text */
+  --color-text-hi: #eaf7f4;
+  --color-text-mid: #9fbdb8;
+  --color-text-low: #6e8d89;
+
+  /* fonts */
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /* radii */
+  --radius-card: 20px;
+  --radius-pill: 999px;
 }
 
-:root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
-
+/* -------------------------------------------------------------------------
+   Map the shadcn semantic tokens onto the TOOLDECK dark palette so existing
+   shadcn primitives (Dialog, Toaster, Input …) render on-brand without a
+   separate theme. Dark mode only.
+   ------------------------------------------------------------------------- */
+:root,
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --radius: 0.75rem;
+
+  --background: #030a0a;
+  --foreground: #eaf7f4;
+
+  --card: #061111;
+  --card-foreground: #eaf7f4;
+
+  --popover: #061111;
+  --popover-foreground: #eaf7f4;
+
+  --primary: #19e3c4;
+  --primary-foreground: #04211d;
+
+  --secondary: rgba(14, 34, 33, 0.78);
+  --secondary-foreground: #eaf7f4;
+
+  --muted: #0e4f4a;
+  --muted-foreground: #9fbdb8;
+
+  --accent: rgba(201, 160, 99, 0.16);
+  --accent-foreground: #c9a063;
+
+  --destructive: #e0566b;
+  --destructive-foreground: #eaf7f4;
+
+  --border: rgba(126, 222, 210, 0.16);
+  --input: rgba(126, 222, 210, 0.16);
+  --ring: #19e3c4;
+
+  --chart-1: #19e3c4;
+  --chart-2: #6bffe9;
+  --chart-3: #c9a063;
+  --chart-4: #e06fb2;
+  --chart-5: #e0566b;
+
+  --sidebar: #061111;
+  --sidebar-foreground: #eaf7f4;
+  --sidebar-primary: #19e3c4;
+  --sidebar-primary-foreground: #04211d;
+  --sidebar-accent: rgba(14, 34, 33, 0.78);
+  --sidebar-accent-foreground: #eaf7f4;
+  --sidebar-border: rgba(126, 222, 210, 0.16);
+  --sidebar-ring: #19e3c4;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--border);
+  }
+  html {
+    /* dark mode only — force it */
+    color-scheme: dark;
   }
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--color-bg-0);
+    color: var(--color-text-mid);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior-y: none;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    color: var(--color-text-hi);
+    letter-spacing: -0.01em;
+  }
+  /* teal scrollbars */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(25, 227, 196, 0.18);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(25, 227, 196, 0.32); }
+}
+
+/* =========================================================================
+   Component primitives — recipes from §10
+   ========================================================================= */
+@layer components {
+  /* Micro-label: 10–11px, UPPERCASE, 0.14em tracking, text-low */
+  .micro-label {
+    font-size: 10px;
+    line-height: 1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-text-low);
+    font-family: var(--font-sans);
+    font-weight: 500;
+  }
+
+  /* Glass card: glass fill + blur + hairline border + inner top highlight */
+  .glass-card {
+    background: var(--glass, rgba(10, 26, 26, 0.55));
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border: 1px solid var(--hairline, rgba(126, 222, 210, 0.16));
+    border-radius: var(--radius-card);
+    position: relative;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  }
+  .glass-strong {
+    background: rgba(14, 34, 33, 0.78);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(126, 222, 210, 0.16);
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.04);
+  }
+
+  /* Selected / active card: gold border + faint gold fill (max one per view) */
+  .glass-selected {
+    border-color: var(--color-gold) !important;
+    background: rgba(201, 160, 99, 0.1) !important;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+      0 0 0 1px rgba(201, 160, 99, 0.25);
+  }
+
+  /* Primary teal button */
+  .btn-teal {
+    background: var(--color-teal);
+    color: #04211d;
+    font-weight: 600;
+    border-radius: var(--radius-pill);
+    transition: box-shadow 200ms ease-out, transform 200ms ease-out,
+      background 200ms ease-out;
+  }
+  .btn-teal:hover:not(:disabled) {
+    background: var(--color-teal-bright);
+    box-shadow: 0 0 24px rgba(25, 227, 196, 0.35),
+      0 0 64px rgba(25, 227, 196, 0.12);
+  }
+  .btn-teal:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+  .btn-teal:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+
+  /* Ghost / hairline button */
+  .btn-ghost-teal {
+    background: transparent;
+    color: var(--color-teal);
+    border: 1px solid rgba(126, 222, 210, 0.16);
+    border-radius: var(--radius-pill);
+    transition: border-color 200ms ease-out, background 200ms ease-out;
+  }
+  .btn-ghost-teal:hover:not(:disabled) {
+    border-color: rgba(25, 227, 196, 0.5);
+    background: rgba(25, 227, 196, 0.06);
+  }
+
+  /* Status pill: dot + label */
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: var(--radius-pill);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    border: 1px solid currentColor;
+    background: color-mix(in srgb, currentColor 12%, transparent);
+  }
+  .status-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+  }
+
+  /* Numbered section chip: 22px circle, 1px teal border, teal numeral */
+  .num-chip {
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 1px solid rgba(25, 227, 196, 0.6);
+    color: var(--color-teal);
+    font-size: 12px;
+    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--font-display);
+    flex-shrink: 0;
+  }
+
+  /* Teal glow ring (scan shutter) */
+  .glow-ring {
+    box-shadow: 0 0 24px rgba(25, 227, 196, 0.35),
+      0 0 64px rgba(25, 227, 196, 0.12),
+      inset 0 0 18px rgba(25, 227, 196, 0.18);
+  }
+
+  /* Live pulse — 2.4s soft pulse for live indicators */
+  @keyframes td-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  .pulse-live {
+    animation: td-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-live { animation: none; }
+  * {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
   }
 }

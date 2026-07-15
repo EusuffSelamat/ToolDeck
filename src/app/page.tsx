@@ -1,31 +1,28 @@
-'use client'
+"use client";
+
+import { useSession } from "next-auth/react";
+import { Loader2 } from "lucide-react";
+import { PlexusBackground } from "@/components/plexus-background";
+import { AuthScreen } from "@/components/auth-screen";
+import { AppShell } from "@/components/app-shell";
 
 export default function Home() {
+  const { data: session, status } = useSession();
+
   return (
-    <div style={{
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      minHeight: '100vh',
-      gap: '2rem',
-      padding: '1rem'
-    }}>
-      <div style={{
-        position: 'relative',
-        width: '6rem',
-        height: '6rem'
-      }}>
-        <img
-          src="/logo.svg"
-          alt="Z.ai Logo"
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'contain'
-          }}
-        />
+    <>
+      <PlexusBackground />
+      <div className="relative z-10">
+        {status === "loading" ? (
+          <div className="flex min-h-screen items-center justify-center">
+            <Loader2 size={28} className="animate-spin" style={{ color: "var(--color-teal)" }} />
+          </div>
+        ) : session ? (
+          <AppShell />
+        ) : (
+          <AuthScreen />
+        )}
       </div>
-    </div>
-  )
+    </>
+  );
 }

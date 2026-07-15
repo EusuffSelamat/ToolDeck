@@ -1,0 +1,768 @@
+     1→"use client";
+     2→
+     3→import { useEffect, useState, useRef } from "react";
+     4→import {
+     5→  ScanLine,
+     6→  Camera,
+     7→  Sparkles,
+     8→  Pencil,
+     9→  Loader2,
+    10→  Check,
+    11→  X,
+    12→  Package,
+    13→  AlertCircle,
+    14→  ArrowRight,
+    15→  RotateCcw,
+    16→} from "lucide-react";
+    17→import { useToast } from "@/hooks/use-toast";
+    18→import { useHashRoute } from "@/hooks/use-hash-route";
+    19→import { compressImage } from "@/lib/compress-image";
+    20→import { setAiPrefill } from "@/lib/ai-prefill";
+    21→import { StatusPill } from "@/components/status-pill";
+    22→
+    23→type IdentifiedItem = {
+    24→  name: string;
+    25→  brand: string | null;
+    26→  model: string | null;
+    27→  category: string;
+    28→  tracking_type: "asset" | "stock";
+    29→  condition_guess: string;
+    30→  estimated_quantity: number | null;
+    31→  description: string;
+    32→  identifying_features: string[];
+    33→  confidence: number;
+    34→  matches: Array<{
+    35→    id: string;
+    36→    code: string;
+    37→    name: string;
+    38→    brand: string | null;
+    39→    model: string | null;
+    40→    photoUrl: string | null;
+    41→    status: string;
+    42→    similarity: number;
+    43→  }>;
+    44→};
+    45→
+    46→type IdentifyResult = {
+    47→  multi_item: boolean;
+    48→  items: IdentifiedItem[];
+    49→};
+    50→
+    51→const TIPS = [
+    52→  "Point at any tool — I'll do the rest.",
+    53→  "Good lighting helps the AI read the model.",
+    54→  "One item per shot works best.",
+    55→  "Brands and model labels boost accuracy.",
+    56→  "For a box of items, I'll list each one.",
+    57→];
+    58→
+    59→export function ScanView() {
+    60→  const [tip, setTip] = useState(0);
+    61→  const { toast } = useToast();
+    62→  const [, navigate] = useHashRoute();
+    63→  const fileInputRef = useRef<HTMLInputElement>(null);
+    64→
+    65→  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+    66→  const [analyzing, setAnalyzing] = useState(false);
+    67→  const [result, setResult] = useState<IdentifyResult | null>(null);
+    68→  const [error, setError] = useState<string | null>(null);
+    69→  const [lastScans, setLastScans] = useState<string[]>([]);
+    70→
+    71→  useEffect(() => {
+    72→    const id = setInterval(() => setTip((t) => (t + 1) % TIPS.length), 3200);
+    73→    return () => clearInterval(id);
+    74→  }, []);
+    75→
+    76→  async function handleCapture(e: React.ChangeEvent<HTMLInputElement>) {
+    77→    const file = e.target.files?.[0];
+    78→    if (!file) return;
+    79→
+    80→    setError(null);
+    81→    setAnalyzing(true);
+    82→
+    83→    try {
+    84→      // Compress the photo client-side (§4: max 1280px, JPEG 0.8)
+    85→      const compressed = await compressImage(file);
+    86→      setPhotoBase64(compressed);
+    87→
+    88→      // Call the vision API
+    89→      const res = await fetch("/api/identify", {
+    90→        method: "POST",
+    91→        headers: { "Content-Type": "application/json" },
+    92→        body: JSON.stringify({ imageBase64: compressed }),
+    93→      });
+    94→
+    95→      if (!res.ok) {
+    96→        const err = await res.json().catch(() => ({}));
+    97→        throw new Error(err.error ?? "AI identification failed");
+    98→      }
+    99→
+   100→      const data: IdentifyResult = await res.json();
+   101→      setResult(data);
+   102→
+   103→      // Track last 3 scans
+   104→      setLastScans((prev) => [compressed, ...prev].slice(0, 3));
+   105→    } catch (e) {
+   106→      const msg = e instanceof Error ? e.message : "Something went wrong";
+   107→      setError(msg);
+   108→    } finally {
+   109→      setAnalyzing(false);
+   110→      // Reset the input so the same file can be re-captured
+   111→      if (fileInputRef.current) fileInputRef.current.value = "";
+   112→    }
+   113→  }
+   114→
+   115→  function reset() {
+   116→    setPhotoBase64(null);
+   117→    setResult(null);
+   118→    setError(null);
+   119→  }
+   120→
+   121→  // If we have a result, show the result sheet instead of the camera
+   122→  if (result && photoBase64) {
+   123→    return (
+   124→      <ScanResult
+   125→        result={result}
+   126→        photoBase64={photoBase64}
+   127→        onReset={reset}
+   128→        navigate={navigate}
+   129→        toast={toast}
+   130→      />
+   131→    );
+   132→  }
+   133→
+   134→  return (
+   135→    <div className="flex flex-col items-center px-5 pt-4">
+   136→      <input
+   137→        ref={fileInputRef}
+   138→        type="file"
+   139→        accept="image/*"
+   140→        capture="environment"
+   141→        onChange={handleCapture}
+   142→        className="hidden"
+   143→        id="scan-camera-input"
+   144→      />
+   145→
+   146→      {/* camera viewport */}
+   147→      <div
+   148→        className="relative flex aspect-[3/4] w-full max-w-sm items-center justify-center overflow-hidden rounded-[var(--radius-card)]"
+   149→        style={{
+   150→          border: "1px solid var(--color-border)",
+   151→          background:
+   152→            "radial-gradient(120% 90% at 50% 30%, rgba(14,79,74,0.45) 0%, rgba(3,10,10,0.9) 70%)",
+   153→        }}
+   154→      >
+   155→        <Bracket className="left-4 top-4" edges={["t", "l"]} />
+   156→        <Bracket className="right-4 top-4" edges={["t", "r"]} />
+   157→        <Bracket className="bottom-4 left-4" edges={["b", "l"]} />
+   158→        <Bracket className="bottom-4 right-4" edges={["b", "r"]} />
+   159→
+   160→        {analyzing && photoBase64 ? (
+   161→          // Show the captured photo with an analyzing overlay
+   162→          <>
+   163→            <img
+   164→              src={photoBase64}
+   165→              alt="Captured"
+   166→              className="absolute inset-0 h-full w-full object-cover"
+   167→              style={{ opacity: 0.5 }}
+   168→            />
+   169→            <div className="relative z-10 flex flex-col items-center gap-3">
+   170→              <Loader2
+   171→                size={36}
+   172→                className="animate-spin"
+   173→                style={{ color: "var(--color-teal)" }}
+   174→              />
+   175→              <p className="text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
+   176→                Identifying…
+   177→              </p>
+   178→              <p className="text-xs" style={{ color: "var(--color-text-mid)" }}>
+   179→                Reading the photo
+   180→              </p>
+   181→            </div>
+   182→          </>
+   183→        ) : (
+   184→          <div className="flex flex-col items-center gap-4 px-6 text-center">
+   185→            <span
+   186→              className="flex h-14 w-14 items-center justify-center rounded-full"
+   187→              style={{
+   188→                border: "1px solid rgba(25,227,196,0.4)",
+   189→                color: "var(--color-teal)",
+   190→              }}
+   191→            >
+   192→              <Camera size={26} />
+   193→            </span>
+   194→            <p className="micro-label">Camera viewport</p>
+   195→            <p className="text-sm" style={{ color: "var(--color-text-mid)" }}>
+   196→              Tap the shutter to identify a tool
+   197→            </p>
+   198→          </div>
+   199→        )}
+   200→
+   201→        {/* scan line sweep decoration */}
+   202→        {!analyzing && (
+   203→          <div
+   204→            className="pointer-events-none absolute inset-x-8 top-1/2 h-px pulse-live"
+   205→            style={{ background: "rgba(25,227,196,0.4)" }}
+   206→          />
+   207→        )}
+   208→      </div>
+   209→
+   210→      {/* error */}
+   211→      {error && (
+   212→        <div
+   213→          className="mt-4 flex items-center gap-2 rounded-xl px-4 py-3 text-sm"
+   214→          style={{
+   215→            border: "1px solid rgba(224,86,107,0.3)",
+   216→            background: "rgba(224,86,107,0.08)",
+   217→            color: "var(--color-danger)",
+   218→          }}
+   219→        >
+   220→          <AlertCircle size={16} />
+   221→          {error}
+   222→        </div>
+   223→      )}
+   224→
+   225→      {/* rotating tip */}
+   226→      {!analyzing && (
+   227→        <p
+   228→          key={tip}
+   229→          className="mt-6 flex items-center gap-2 text-sm"
+   230→          style={{ color: "var(--color-text-mid)" }}
+   231→        >
+   232→          <Sparkles size={14} style={{ color: "var(--color-teal)" }} />
+   233→          {TIPS[tip]}
+   234→        </p>
+   235→      )}
+   236→
+   237→      {/* shutter */}
+   238→      <button
+   239→        type="button"
+   240→        onClick={() => fileInputRef.current?.click()}
+   241→        disabled={analyzing}
+   242→        className="glow-ring pulse-live mt-6 flex h-20 w-20 items-center justify-center rounded-full transition-transform active:scale-95 disabled:opacity-50"
+   243→        style={{
+   244→          background: "var(--color-teal)",
+   245→          color: "#04211d",
+   246→          border: "3px solid var(--color-bg-0)",
+   247→        }}
+   248→        aria-label="Capture and identify"
+   249→      >
+   250→        {analyzing ? (
+   251→          <Loader2 size={28} className="animate-spin" />
+   252→        ) : (
+   253→          <ScanLine size={30} strokeWidth={2.2} />
+   254→        )}
+   255→      </button>
+   256→
+   257→      {/* Add manually CTA */}
+   258→      <button
+   259→        type="button"
+   260→        onClick={() => navigate({ name: "item-new" })}
+   261→        className="btn-ghost-teal mt-5 flex h-10 items-center gap-2 px-5 text-sm"
+   262→      >
+   263→        <Pencil size={15} /> Add manually
+   264→      </button>
+   265→
+   266→      {/* last scans */}
+   267→      <div className="mt-8 w-full max-w-sm">
+   268→        <div className="mb-3 flex items-center justify-between">
+   269→          <span className="micro-label">Last scans</span>
+   270→          <span className="micro-label" style={{ color: "var(--color-text-low)" }}>
+   271→            {lastScans.length} of 3
+   272→          </span>
+   273→        </div>
+   274→        <div className="grid grid-cols-3 gap-3">
+   275→          {[0, 1, 2].map((i) => (
+   276→            <div
+   277→              key={i}
+   278→              className="flex aspect-square items-center justify-center overflow-hidden rounded-2xl"
+   279→              style={{
+   280→                border: lastScans[i]
+   281→                  ? "1px solid var(--color-border)"
+   282→                  : "1px dashed rgba(126,222,210,0.18)",
+   283→              }}
+   284→            >
+   285→              {lastScans[i] ? (
+   286→                <img
+   287→                  src={lastScans[i]}
+   288→                  alt="Last scan"
+   289→                  className="h-full w-full object-cover"
+   290→                  style={{ opacity: 0.6 }}
+   291→                />
+   292→              ) : (
+   293→                <Camera size={18} style={{ color: "var(--color-text-low)" }} />
+   294→              )}
+   295→            </div>
+   296→          ))}
+   297→        </div>
+   298→      </div>
+   299→    </div>
+   300→  );
+   301→}
+   302→
+   303→// ── Scan Result Sheet ────────────────────────────────────────────────────
+   304→// Handles the confidence tiers (§6) + dedupe matches + multi-item picker.
+   305→
+   306→function ScanResult({
+   307→  result,
+   308→  photoBase64,
+   309→  onReset,
+   310→  navigate,
+   311→  toast,
+   312→}: {
+   313→  result: IdentifyResult;
+   314→  photoBase64: string;
+   315→  onReset: () => void;
+   316→  navigate: ReturnType<typeof useHashRoute>[1];
+   317→  toast: ReturnType<typeof useToast>["toast"];
+   318→}) {
+   319→  const [selectedIdx, setSelectedIdx] = useState(0);
+   320→
+   321→  // If multi-item, show the picker first
+   322→  if (result.multi_item && result.items.length > 1) {
+   323→    return (
+   324→      <MultiItemPicker
+   325→        result={result}
+   326→        photoBase64={photoBase64}
+   327→        selectedIdx={selectedIdx}
+   328→        onSelect={setSelectedIdx}
+   329→        onReset={onReset}
+   330→        navigate={navigate}
+   331→        toast={toast}
+   332→      />
+   333→    );
+   334→  }
+   335→
+   336→  const item = result.items[0];
+   337→  if (!item) {
+   338→    // No items identified — go to manual form
+   339→    return (
+   340→      <ManualFallback
+   341→        photoBase64={photoBase64}
+   342→        onReset={onReset}
+   343→        navigate={navigate}
+   344→        toast={toast}
+   345→      />
+   346→    );
+   347→  }
+   348→
+   349→  return (
+   350→    <SingleItemResult
+   351→      item={item}
+   352→      photoBase64={photoBase64}
+   353→      onReset={onReset}
+   354→      navigate={navigate}
+   355→      toast={toast}
+   356→    />
+   357→  );
+   358→}
+   359→
+   360→// ── Single Item Result ───────────────────────────────────────────────────
+   361→function SingleItemResult({
+   362→  item,
+   363→  photoBase64,
+   364→  onReset,
+   365→  navigate,
+   366→  toast,
+   367→}: {
+   368→  item: IdentifiedItem;
+   369→  photoBase64: string;
+   370→  onReset: () => void;
+   371→  navigate: ReturnType<typeof useHashRoute>[1];
+   372→  toast: ReturnType<typeof useToast>["toast"];
+   373→}) {
+   374→  const confidence = item.confidence;
+   375→  const tier =
+   376→    confidence >= 0.75
+   377→      ? "high"
+   378→      : confidence >= 0.4
+   379→      ? "medium"
+   380→      : "low";
+   381→
+   382→  // Low confidence → manual form with photo
+   383→  if (tier === "low") {
+   384→    return (
+   385→      <ManualFallback
+   386→        photoBase64={photoBase64}
+   387→        onReset={onReset}
+   388→        navigate={navigate}
+   389→        toast={toast}
+   390→        description={item.description}
+   391→      />
+   392→    );
+   393→  }
+   394→
+   395→  const needsConfirm = tier === "medium"; // highlight category + tracking_type
+   396→
+   397→  // Has strong dedupe matches → show "looks like this might already be in inventory"
+   398→  const hasMatches = item.matches.length > 0;
+   399→
+   400→  return (
+   401→    <div className="px-5 pt-4">
+   402→      {/* Photo hero */}
+   403→      <div className="relative overflow-hidden rounded-[var(--radius-card)]" style={{ border: "1px solid var(--color-border)" }}>
+   404→        <img src={photoBase64} alt="Captured" className="aspect-[4/3] w-full object-cover" />
+   405→        <div className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "rgba(3,10,10,0.85)", color: confidenceColor(confidence), border: `1px solid ${confidenceColor(confidence)}` }}>
+   406→          {Math.round(confidence * 100)}% confident
+   407→        </div>
+   408→        <button
+   409→          onClick={onReset}
+   410→          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full"
+   411→          style={{ background: "rgba(3,10,10,0.85)", color: "var(--color-text-hi)", border: "1px solid var(--color-border)" }}
+   412→          aria-label="Scan again"
+   413→        >
+   414→          <X size={16} />
+   415→        </button>
+   416→      </div>
+   417→
+   418→      {/* Description */}
+   419→      <p className="mt-4 text-sm" style={{ color: "var(--color-text-mid)" }}>
+   420→        {item.description}
+   421→      </p>
+   422→
+   423→      {/* Possible existing matches (snap-to-find) */}
+   424→      {hasMatches && (
+   425→        <div className="mt-5">
+   426→          <div className="mb-2 flex items-center gap-2">
+   427→            <Sparkles size={14} style={{ color: "var(--color-gold)" }} />
+   428→            <span className="micro-label" style={{ color: "var(--color-gold)" }}>
+   429→              Looks like this might already be in inventory
+   430→            </span>
+   431→          </div>
+   432→          <div className="space-y-2">
+   433→            {item.matches.map((m) => (
+   434→              <button
+   435→                key={m.id}
+   436→                onClick={() => navigate({ name: "item-detail", id: m.id })}
+   437→                className="glass-card flex w-full items-center gap-3 p-3 text-left transition-all hover:border-[rgba(201,160,99,0.5)]"
+   438→              >
+   439→                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl" style={{ border: "1px solid var(--color-border)" }}>
+   440→                  {m.photoUrl ? (
+   441→                    <img src={m.photoUrl} alt={m.name} className="h-full w-full object-cover" />
+   442→                  ) : (
+   443→                    <Package size={16} style={{ color: "var(--color-text-low)" }} />
+   444→                  )}
+   445→                </div>
+   446→                <div className="min-w-0 flex-1">
+   447→                  <span className="micro-label">{m.code}</span>
+   448→                  <p className="truncate text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
+   449→                    {m.name}
+   450→                  </p>
+   451→                  <p className="truncate text-xs" style={{ color: "var(--color-text-low)" }}>
+   452→                    {[m.brand, m.model].filter(Boolean).join(" · ") || "—"}
+   453→                  </p>
+   454→                </div>
+   455→                <StatusPill status={m.status as "available" | "checked_out" | "needs_service" | "out_of_order"} />
+   456→                <ArrowRight size={16} style={{ color: "var(--color-text-low)" }} />
+   457→              </button>
+   458→            ))}
+   459→          </div>
+   460→          <p className="mt-2 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
+   461→            None of these? Add as new ↓
+   462→          </p>
+   463→        </div>
+   464→      )}
+   465→
+   466→      {/* AI-filled summary card */}
+   467→      <div className="glass-card mt-4 p-4">
+   468→        <div className="mb-3 flex items-center gap-2">
+   469→          <Sparkles size={14} style={{ color: "var(--color-teal)" }} />
+   470→          <span className="micro-label">AI identification</span>
+   471→        </div>
+   472→        <div className="space-y-2 text-sm">
+   473→          <SummaryRow label="Name" value={item.name} />
+   474→          {item.brand && <SummaryRow label="Brand" value={item.brand} />}
+   475→          {item.model && <SummaryRow label="Model" value={item.model} />}
+   476→          <SummaryRow
+   477→            label="Category"
+   478→            value={item.category}
+   479→            highlight={needsConfirm}
+   480→          />
+   481→          <SummaryRow
+   482→            label="Type"
+   483→            value={item.tracking_type === "asset" ? "Unique asset" : "Stock"}
+   484→            highlight={needsConfirm}
+   485→          />
+   486→          {item.tracking_type === "stock" && item.estimated_quantity && (
+   487→            <SummaryRow label="Est. quantity" value={String(item.estimated_quantity)} />
+   488→          )}
+   489→          {item.identifying_features.length > 0 && (
+   490→            <div className="flex gap-2 pt-1">
+   491→              <span className="micro-label flex-shrink-0">Features</span>
+   492→              <span className="text-xs" style={{ color: "var(--color-text-mid)" }}>
+   493→                {item.identifying_features.join(" · ")}
+   494→              </span>
+   495→            </div>
+   496→          )}
+   497→        </div>
+   498→        {needsConfirm && (
+   499→          <p className="mt-3 text-xs" style={{ color: "var(--color-gold)" }}>
+   500→            Please verify the highlighted fields before saving.
+   501→          </p>
+   502→        )}
+   503→      </div>
+   504→
+   505→      {/* Actions */}
+   506→      <div className="mt-5 flex gap-3 pb-2">
+   507→        <button onClick={onReset} className="btn-ghost-teal flex-1 h-11 flex items-center justify-center gap-2 text-sm">
+   508→          <RotateCcw size={15} /> Scan again
+   509→        </button>
+   510→        <button
+   511→          onClick={() => {
+   512→            setAiPrefill({
+   513→              name: item.name,
+   514→              brand: item.brand,
+   515→              model: item.model,
+   516→              category: item.category,
+   517→              trackingType: item.tracking_type,
+   518→              condition:
+   519→                item.condition_guess === "good" ||
+   520→                item.condition_guess === "needs_service" ||
+   521→                item.condition_guess === "out_of_order"
+   522→                  ? item.condition_guess
+   523→                  : "good",
+   524→              quantity: item.estimated_quantity ?? undefined,
+   525→              photoBase64,
+   526→              aiConfidence: item.confidence,
+   527→            });
+   528→            navigate({ name: "item-new" });
+   529→          }}
+   530→          className="btn-teal flex-[2] h-11 flex items-center justify-center gap-2 text-sm"
+   531→        >
+   532→          <Check size={16} /> Add as new item
+   533→        </button>
+   534→      </div>
+   535→
+   536→      {/* Pre-fill note */}
+   537→      <p className="mt-3 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
+   538→        Tapping “Add as new item” opens a pre-filled form with the photo attached.
+   539→      </p>
+   540→    </div>
+   541→  );
+   542→}
+   543→
+   544→// ── Multi-Item Picker (box of tools) ─────────────────────────────────────
+   545→function MultiItemPicker({
+   546→  result,
+   547→  photoBase64,
+   548→  selectedIdx,
+   549→  onSelect,
+   550→  onReset,
+   551→  navigate,
+   552→  toast,
+   553→}: {
+   554→  result: IdentifyResult;
+   555→  photoBase64: string;
+   556→  selectedIdx: number;
+   557→  onSelect: (i: number) => void;
+   558→  onReset: () => void;
+   559→  navigate: ReturnType<typeof useHashRoute>[1];
+   560→  toast: ReturnType<typeof useToast>["toast"];
+   561→}) {
+   562→  return (
+   563→    <div className="px-5 pt-4">
+   564→      {/* Photo hero */}
+   565→      <div className="relative overflow-hidden rounded-[var(--radius-card)]" style={{ border: "1px solid var(--color-border)" }}>
+   566→        <img src={photoBase64} alt="Captured" className="aspect-[4/3] w-full object-cover" />
+   567→        <div className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "rgba(3,10,10,0.85)", color: "var(--color-gold)", border: "1px solid var(--color-gold)" }}>
+   568→          {result.items.length} items found
+   569→        </div>
+   570→        <button
+   571→          onClick={onReset}
+   572→          className="absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full"
+   573→          style={{ background: "rgba(3,10,10,0.85)", color: "var(--color-text-hi)", border: "1px solid var(--color-border)" }}
+   574→          aria-label="Scan again"
+   575→        >
+   576→          <X size={16} />
+   577→        </button>
+   578→      </div>
+   579→
+   580→      <p className="mt-4 text-sm" style={{ color: "var(--color-text-mid)" }}>
+   581→        This photo contains multiple items. Tap one to add it, or scan again
+   582→        for a single-item shot.
+   583→      </p>
+   584→
+   585→      {/* Item list */}
+   586→      <div className="mt-4 space-y-3">
+   587→        {result.items.map((item, i) => (
+   588→          <button
+   589→            key={i}
+   590→            onClick={() => onSelect(i)}
+   591→            className={`glass-card w-full p-4 text-left transition-all ${
+   592→              selectedIdx === i ? "glass-selected" : "hover:border-[rgba(25,227,196,0.35)]"
+   593→            }`}
+   594→          >
+   595→            <div className="flex items-start justify-between gap-2">
+   596→              <div className="min-w-0 flex-1">
+   597→                <div className="flex items-center gap-2">
+   598→                  <span className="num-chip">{i + 1}</span>
+   599→                  <span className="micro-label">{Math.round(item.confidence * 100)}% confident</span>
+   600→                </div>
+   601→                <p className="mt-1.5 text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
+   602→                  {item.name}
+   603→                </p>
+   604→                <p className="text-xs" style={{ color: "var(--color-text-mid)" }}>
+   605→                  {item.category} · {item.tracking_type === "asset" ? "Asset" : "Stock"}
+   606→                </p>
+   607→                {item.brand && (
+   608→                  <p className="text-xs" style={{ color: "var(--color-text-low)" }}>
+   609→                    {item.brand}{item.model ? ` ${item.model}` : ""}
+   610→                  </p>
+   611→                )}
+   612→              </div>
+   613→              {selectedIdx === i && (
+   614→                <Check size={18} style={{ color: "var(--color-gold)" }} />
+   615→              )}
+   616→            </div>
+   617→            {item.matches.length > 0 && (
+   618→              <p className="mt-2 text-xs" style={{ color: "var(--color-gold)" }}>
+   619→                ⚡ {item.matches.length} possible existing match{item.matches.length > 1 ? "es" : ""}
+   620→              </p>
+   621→            )}
+   622→          </button>
+   623→        ))}
+   624→      </div>
+   625→
+   626→      {/* Actions */}
+   627→      <div className="mt-5 flex gap-3 pb-2">
+   628→        <button onClick={onReset} className="btn-ghost-teal flex-1 h-11 flex items-center justify-center gap-2 text-sm">
+   629→          <RotateCcw size={15} /> Scan again
+   630→        </button>
+   631→        <button
+   632→          onClick={() => {
+   633→            const item = result.items[selectedIdx];
+   634→            if (!item) return;
+   635→            setAiPrefill({
+   636→              name: item.name,
+   637→              brand: item.brand,
+   638→              model: item.model,
+   639→              category: item.category,
+   640→              trackingType: item.tracking_type,
+   641→              condition:
+   642→                item.condition_guess === "good" ||
+   643→                item.condition_guess === "needs_service" ||
+   644→                item.condition_guess === "out_of_order"
+   645→                  ? item.condition_guess
+   646→                  : "good",
+   647→              quantity: item.estimated_quantity ?? undefined,
+   648→              photoBase64,
+   649→              aiConfidence: item.confidence,
+   650→            });
+   651→            navigate({ name: "item-new" });
+   652→          }}
+   653→          className="btn-teal flex-[2] h-11 flex items-center justify-center gap-2 text-sm"
+   654→        >
+   655→          <Check size={16} /> Add selected
+   656→        </button>
+   657→      </div>
+   658→    </div>
+   659→  );
+   660→}
+   661→
+   662→// ── Manual Fallback (low confidence or no items) ─────────────────────────
+   663→function ManualFallback({
+   664→  photoBase64,
+   665→  onReset,
+   666→  navigate,
+   667→  toast,
+   668→  description,
+   669→}: {
+   670→  photoBase64: string;
+   671→  onReset: () => void;
+   672→  navigate: ReturnType<typeof useHashRoute>[1];
+   673→  toast: ReturnType<typeof useToast>["toast"];
+   674→  description?: string;
+   675→}) {
+   676→  return (
+   677→    <div className="px-5 pt-4">
+   678→      <div className="relative overflow-hidden rounded-[var(--radius-card)]" style={{ border: "1px solid var(--color-border)" }}>
+   679→        <img src={photoBase64} alt="Captured" className="aspect-[4/3] w-full object-cover" style={{ opacity: 0.6 }} />
+   680→        <div className="absolute left-3 top-3 rounded-full px-3 py-1 text-xs font-semibold" style={{ background: "rgba(3,10,10,0.85)", color: "var(--color-text-mid)", border: "1px solid var(--color-border)" }}>
+   681→          Not sure
+   682→        </div>
+   683→      </div>
+   684→
+   685→      <div className="glass-card mt-4 p-4 text-center">
+   686→        <AlertCircle size={24} style={{ color: "var(--color-text-low)", margin: "0 auto" }} />
+   687→        <p className="mt-2 text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
+   688→          Couldn't identify this with confidence
+   689→        </p>
+   690→        {description && (
+   691→          <p className="mt-1 text-xs" style={{ color: "var(--color-text-mid)" }}>
+   692→            {description}
+   693→          </p>
+   694→        )}
+   695→        <p className="mt-2 text-xs" style={{ color: "var(--color-text-low)" }}>
+   696→          You can add it manually — the photo is already attached.
+   697→        </p>
+   698→      </div>
+   699→
+   700→      <div className="mt-5 flex gap-3 pb-2">
+   701→        <button onClick={onReset} className="btn-ghost-teal flex-1 h-11 flex items-center justify-center gap-2 text-sm">
+   702→          <RotateCcw size={15} /> Scan again
+   703→        </button>
+   704→        <button
+   705→          onClick={() => navigate({ name: "item-new" })}
+   706→          className="btn-teal flex-[2] h-11 flex items-center justify-center gap-2 text-sm"
+   707→        >
+   708→          <Pencil size={16} /> Add manually
+   709→        </button>
+   710→      </div>
+   711→    </div>
+   712→  );
+   713→}
+   714→
+   715→// ── Helpers ──────────────────────────────────────────────────────────────
+   716→function confidenceColor(c: number): string {
+   717→  if (c >= 0.75) return "var(--color-teal)";
+   718→  if (c >= 0.4) return "var(--color-gold)";
+   719→  return "var(--color-text-low)";
+   720→}
+   721→
+   722→function SummaryRow({
+   723→  label,
+   724→  value,
+   725→  highlight,
+   726→}: {
+   727→  label: string;
+   728→  value: string;
+   729→  highlight?: boolean;
+   730→}) {
+   731→  return (
+   732→    <div className="flex items-center justify-between gap-3">
+   733→      <span className="micro-label">{label}</span>
+   734→      <span
+   735→        className="text-right text-sm"
+   736→        style={{
+   737→          color: highlight ? "var(--color-gold)" : "var(--color-text-hi)",
+   738→          fontWeight: highlight ? 600 : 400,
+   739→        }}
+   740→      >
+   741→        {value}
+   742→      </span>
+   743→    </div>
+   744→  );
+   745→}
+   746→
+   747→function Bracket({
+   748→  className,
+   749→  edges,
+   750→}: {
+   751→  className: string;
+   752→  edges: ("t" | "r" | "b" | "l")[];
+   753→}) {
+   754→  const style: React.CSSProperties = {
+   755→    position: "absolute",
+   756→    width: 18,
+   757→    height: 18,
+   758→    borderColor: "var(--color-teal)",
+   759→    borderStyle: "solid",
+   760→    borderWidth: 0,
+   761→  };
+   762→  if (edges.includes("t")) style.borderTopWidth = 2;
+   763→  if (edges.includes("b")) style.borderBottomWidth = 2;
+   764→  if (edges.includes("l")) style.borderLeftWidth = 2;
+   765→  if (edges.includes("r")) style.borderRightWidth = 2;
+   766→  return <div className={className} style={style} />;
+   767→}
+   768→

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Package, X, MapPin } from "lucide-react";
+import { Search, Plus, Package, X, MapPin, ChevronDown, ArrowRight } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
 import { getLocationFilter, clearLocationFilter } from "@/lib/location-filter";
@@ -49,6 +49,19 @@ export function ItemsView() {
   const initial = useMemo(() => getInitialLocationFilter(), []);
   const [activeFilters, setActiveFilters] = useState<FilterChip[]>(initial.filters);
   const [locationFilterName, setLocationFilterName] = useState<string | null>(initial.name);
+  const [showLocationPicker, setShowLocationPicker] = useState(false);
+
+  // Fetch locations for the picker (cached, shared with Locations view)
+  const { data: locationsData } = useQuery({
+    queryKey: ["locations"],
+    queryFn: async () => {
+      const res = await fetch("/api/locations");
+      if (!res.ok) throw new Error("Failed to load locations");
+      return res.json() as Promise<{
+        locations: Array<{ id: string; name: string; kind: string; itemCount: number }>;
+      }>;
+    },
+  });
 
   // Debounce search
   useEffect(() => {
@@ -118,6 +131,21 @@ export function ItemsView() {
     setLocationFilterName(null);
   }
 
+  function selectLocation(loc: { id: string; name: string }) {
+    setActiveFilters((prev) => {
+      const filtered = prev.filter((f) => f.key !== "locationId");
+      filtered.push({ key: "locationId", label: loc.name, value: loc.id });
+      return filtered;
+    });
+    setLocationFilterName(loc.name);
+    setShowLocationPicker(false);
+  }
+
+  function removeLocationFilter() {
+    setActiveFilters((prev) => prev.filter((f) => f.key !== "locationId"));
+    setLocationFilterName(null);
+  }
+
   const items = data?.items ?? [];
   const hasAnyFilter = debouncedSearch || activeFilters.length > 0;
 
@@ -140,7 +168,7 @@ export function ItemsView() {
         </button>
       </div>
 
-      {/* Location filter banner (when navigated from Locations view) */}
+      {/* Location filter banner (when a location filter is active) */}
       {locationFilterName && (
         <div
           className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2.5"
@@ -154,10 +182,7 @@ export function ItemsView() {
             {locationFilterName}
           </span>
           <button
-            onClick={() => {
-              setActiveFilters((prev) => prev.filter((f) => f.key !== "locationId"));
-              setLocationFilterName(null);
-            }}
+            onClick={removeLocationFilter}
             className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-[rgba(25,227,196,0.1)]"
             style={{ color: "var(--color-text-mid)" }}
             aria-label="Remove location filter"
@@ -199,6 +224,28 @@ export function ItemsView() {
 
       {/* Filter chips */}
       <div className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-2">
+        {/* Location picker chip */}
+        <button
+          type="button"
+          onClick={() => setShowLocationPicker(true)}
+          className="flex flex-shrink-0 items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-medium transition-all"
+          style={{
+            background: locationFilterName
+              ? "rgba(14,79,74,0.4)"
+              : "rgba(6,17,17,0.6)",
+            color: locationFilterName
+              ? "var(--color-teal)"
+              : "var(--color-text-mid)",
+            border: `1px solid ${
+              locationFilterName ? "rgba(25,227,196,0.5)" : "var(--color-border)"
+            }`,
+          }}
+        >
+          <MapPin size={12} />
+          {locationFilterName ?? "Location"}
+          <ChevronDown size={12} />
+        </button>
+
         {STATUS_CHIPS.map((c) => (
           <Chip
             key={c.label}
@@ -285,6 +332,133 @@ export function ItemsView() {
           ))}
         </div>
       )}
+
+      {/* Location picker sheet */}
+      {showLocationPicker && (
+        <LocationPickerSheet
+          locations={locationsData?.locations ?? []}
+          selectedId={
+            activeFilters.find((f) => f.key === "locationId")?.value ?? null
+          }
+          onSelect={selectLocation}
+          onClear={removeLocationFilter}
+          onViewAll={() => {
+            setShowLocationPicker(false);
+            navigate({ name: "locations" });
+          }}
+          onClose={() => setShowLocationPicker(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Location Picker Sheet ───────────────────────────────────────────────
+function LocationPickerSheet({
+  locations,
+  selectedId,
+  onSelect,
+  onClear,
+  onViewAll,
+  onClose,
+}: {
+  locations: Array<{ id: string; name: string; kind: string; itemCount: number }>;
+  selectedId: string | null;
+  onSelect: (loc: { id: string; name: string }) => void;
+  onClear: () => void;
+  onViewAll: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "rgba(3,10,10,0.8)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="glass-strong w-full max-w-md rounded-t-[var(--radius-card)] p-5 sm:rounded-[var(--radius-card)]"
+        onClick={(e) => e.stopPropagation()}
+        style={{ border: "1px solid var(--color-border)", maxHeight: "70vh", overflowY: "auto" }}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold">Filter by location</h2>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(25,227,196,0.08)]"
+            style={{ color: "var(--color-text-mid)" }}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {locations.length === 0 ? (
+          <p className="py-6 text-center text-sm" style={{ color: "var(--color-text-mid)" }}>
+            No locations yet. Add some in the Locations tab.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {locations.map((loc) => {
+              const active = loc.id === selectedId;
+              return (
+                <button
+                  key={loc.id}
+                  onClick={() => onSelect({ id: loc.id, name: loc.name })}
+                  className={`flex w-full items-center gap-3 rounded-xl p-3 text-left transition-all ${
+                    active ? "glass-selected" : "hover:bg-[rgba(25,227,196,0.04)]"
+                  }`}
+                  style={
+                    active
+                      ? undefined
+                      : { border: "1px solid var(--color-border)" }
+                  }
+                >
+                  <MapPin
+                    size={16}
+                    style={{ color: active ? "var(--color-gold)" : "var(--color-teal)" }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="truncate text-sm font-medium"
+                      style={{ color: "var(--color-text-hi)" }}
+                    >
+                      {loc.name}
+                    </p>
+                    <p className="micro-label mt-0.5">
+                      {loc.kind} · {loc.itemCount} {loc.itemCount === 1 ? "item" : "items"}
+                    </p>
+                  </div>
+                  {active && (
+                    <span style={{ color: "var(--color-gold)" }}>
+                      <ChevronDown size={16} className="rotate-180" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        <div
+          className="mt-4 flex gap-3 border-t pt-4"
+          style={{ borderColor: "var(--color-border)" }}
+        >
+          {selectedId && (
+            <button
+              onClick={onClear}
+              className="btn-ghost-teal flex-1 h-10 text-sm"
+            >
+              Clear filter
+            </button>
+          )}
+          <button
+            onClick={onViewAll}
+            className="btn-ghost-teal flex-1 h-10 flex items-center justify-center gap-1.5 text-sm"
+          >
+            View all locations <ArrowRight size={14} />
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

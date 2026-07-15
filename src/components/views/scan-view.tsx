@@ -68,29 +68,52 @@ export function ScanView() {
   const [error, setError] = useState<string | null>(null);
   const [lastScans, setLastScans] = useState<string[]>([]);
 
+  // Abort controller for the in-flight identify request — allows cancellation
+  // when the user taps "Cancel" or starts a new scan.
+  const abortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     const id = setInterval(() => setTip((t) => (t + 1) % TIPS.length), 3200);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      // Abort any in-flight request on unmount
+      abortRef.current?.abort();
+    };
   }, []);
 
   async function handleCapture(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Guard: don't start a new scan if one is already in-flight
+    if (analyzing) return;
+
+    // Abort any previous in-flight request
+    abortRef.current?.abort();
+
     setError(null);
     setAnalyzing(true);
+
+    // Create a new abort controller for this request
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       // Compress the photo client-side (§4: max 1280px, JPEG 0.8)
       const compressed = await compressImage(file);
       setPhotoBase64(compressed);
 
-      // Call the vision API
+      // Call the vision API with abort signal + 45s client-side timeout
+      const timeout = setTimeout(() => controller.abort(), 45_000);
+
       const res = await fetch("/api/identify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageBase64: compressed }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -100,19 +123,37 @@ export function ScanView() {
       const data: IdentifyResult = await res.json();
       setResult(data);
 
-      // Track last 3 scans
+      // Track last 3 scans (store the base64 — small enough for 3 items)
       setLastScans((prev) => [compressed, ...prev].slice(0, 3));
     } catch (e) {
+      // Don't show error if the user cancelled
+      if (e instanceof Error && e.name === "AbortError") {
+        return;
+      }
       const msg = e instanceof Error ? e.message : "Something went wrong";
       setError(msg);
     } finally {
       setAnalyzing(false);
+      abortRef.current = null;
       // Reset the input so the same file can be re-captured
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
+  function cancelAnalysis() {
+    abortRef.current?.abort();
+    setAnalyzing(false);
+    setPhotoBase64(null);
+    abortRef.current = null;
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
   function reset() {
+    // Abort any in-flight request
+    abortRef.current?.abort();
+    abortRef.current = null;
+
+    // Clear all state — allows GC of the base64 strings
     setPhotoBase64(null);
     setResult(null);
     setError(null);
@@ -178,6 +219,17 @@ export function ScanView() {
               <p className="text-xs" style={{ color: "var(--color-text-mid)" }}>
                 Reading the photo
               </p>
+              <button
+                type="button"
+                onClick={cancelAnalysis}
+                className="mt-2 flex h-8 items-center gap-1.5 rounded-full px-4 text-xs font-medium transition-colors hover:bg-[rgba(224,86,107,0.1)]"
+                style={{
+                  border: "1px solid rgba(224,86,107,0.3)",
+                  color: "var(--color-danger)",
+                }}
+              >
+                <X size={13} /> Cancel
+              </button>
             </div>
           </>
         ) : (

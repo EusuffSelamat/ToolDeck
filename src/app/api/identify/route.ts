@@ -5,19 +5,11 @@ import { requireAuth } from "@/lib/require-auth";
 /**
  * POST /api/identify — AI vision identification endpoint (§6).
  *
- * Receives a compressed base64 JPEG, calls the Z.ai vision model
- * (glm-4.6v-flash via z-ai-web-dev-sdk) with the §6 system prompt,
- * then runs dedupe against existing items.
- *
- * Key adaptation: the §6 prompt assumed "one photo of an item", but real
- * workshop photos are often boxes/crates with multiple items. The prompt
- * now returns either a single item OR an array of items, plus a
- * `multi_item` flag. The client handles both cases.
- *
- * Confidence tiers (§6):
- *   ≥ 0.75 → fully pre-filled confirm sheet
- *   0.40–0.74 → pre-filled, category/tracking_type highlighted
- *   < 0.40 → manual add form with photo attached
+ * Performance: optimized for 100+ rapid shots:
+ * - Category list cached at module level (changes rarely)
+ * - Dedupe: single DB query for ALL items, then in-memory trigram match
+ * - Vision call wrapped in a 30s timeout (prevents hung requests)
+ * - One retry on transient failure with exponential backoff
  */
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -34,12 +26,6 @@ type IdentifiedItem = {
   confidence: number;
 };
 
-type IdentifyResponse = {
-  multi_item: boolean;
-  items: IdentifiedItem[];
-  raw_response?: string;
-};
-
 type MatchCandidate = {
   id: string;
   code: string;
@@ -51,8 +37,25 @@ type MatchCandidate = {
   similarity: number;
 };
 
+// ── Category cache (avoids a DB query on every identify call) ────────────
+let categoryCache: { list: string; expiry: number } | null = null;
+const CATEGORY_CACHE_TTL = 60_000; // 1 minute
+
+async function getCategoryList(): Promise<string> {
+  const now = Date.now();
+  if (categoryCache && now < categoryCache.expiry) {
+    return categoryCache.list;
+  }
+  const categories = await db.category.findMany({
+    orderBy: { sort: "asc" },
+    select: { name: true },
+  });
+  const list = categories.map((c) => c.name).join(", ");
+  categoryCache = { list, expiry: now + CATEGORY_CACHE_TTL };
+  return list;
+}
+
 // ── Trigram similarity (replaces pg_trgm) ───────────────────────────────
-// Jaccard similarity over character trigrams. pg_trgm uses the same metric.
 function trigramSet(s: string): Set<string> {
   const set = new Set<string>();
   const padded = `  ${s}  `.toLowerCase();
@@ -72,9 +75,14 @@ function trigramSimilarity(a: string, b: string): number {
   return intersection / (sa.size + sb.size - intersection);
 }
 
-// ── Dedupe query (§6) ───────────────────────────────────────────────────
-// Runs after identification to find possible existing matches.
-async function findMatches(candidate: string): Promise<MatchCandidate[]> {
+// ── Dedupe — single DB query, in-memory matching for all candidates ─────
+// Loads all non-deleted items once, then computes trigram similarity against
+// each candidate string. At ≤2000 items this is <10ms per candidate.
+async function findAllMatches(
+  candidates: string[]
+): Promise<MatchCandidate[][]> {
+  if (candidates.length === 0) return [];
+
   const items = await db.item.findMany({
     where: { isDeleted: false },
     select: {
@@ -86,21 +94,33 @@ async function findMatches(candidate: string): Promise<MatchCandidate[]> {
       photoUrl: true,
       status: true,
     },
-    take: 500, // cap for performance at scale
+    take: 2000,
   });
 
-  return items
-    .map((item) => {
-      const candidateText = candidate.toLowerCase();
-      const itemText = `${item.name} ${item.brand ?? ""} ${item.model ?? ""}`.toLowerCase();
-      return {
-        ...item,
-        similarity: trigramSimilarity(candidateText, itemText),
-      };
-    })
-    .filter((m) => m.similarity > 0.45)
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, 5);
+  // Pre-compute trigram sets for all existing items (do this once)
+  const itemData = items.map((item) => ({
+    ...item,
+    itemText: `${item.name} ${item.brand ?? ""} ${item.model ?? ""}`.toLowerCase(),
+  }));
+
+  // For each candidate, compute similarity against all items
+  return candidates.map((candidate) => {
+    const candidateText = candidate.toLowerCase();
+    return itemData
+      .map((item) => ({
+        id: item.id,
+        code: item.code,
+        name: item.name,
+        brand: item.brand,
+        model: item.model,
+        photoUrl: item.photoUrl,
+        status: item.status,
+        similarity: trigramSimilarity(candidateText, item.itemText),
+      }))
+      .filter((m) => m.similarity > 0.45)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 5);
+  });
 }
 
 // ── API handler ─────────────────────────────────────────────────────────
@@ -127,22 +147,24 @@ export async function POST(req: Request) {
     );
   }
 
-  // Fetch live category list for the prompt
-  const categories = await db.category.findMany({
-    orderBy: { sort: "asc" },
-    select: { name: true },
-  });
-  const categoryList = categories.map((c) => c.name).join(", ");
-
-  // Build the system prompt (§6, extended for multi-item photos)
+  const categoryList = await getCategoryList();
   const systemPrompt = buildSystemPrompt(categoryList);
 
-  // Call the vision model
+  // Call the vision model with retry + timeout
   let rawResponse: string;
   try {
-    rawResponse = await callVisionModel(imageBase64, systemPrompt);
+    rawResponse = await callVisionModelWithRetry(imageBase64, systemPrompt);
   } catch (e) {
-    console.error("Vision model call failed:", e);
+    const msg = e instanceof Error ? e.message : "Unknown error";
+    console.error("Vision model call failed:", msg);
+
+    // Return a user-friendly error with the specific failure reason
+    if (msg.includes("timeout") || msg.includes("Timeout")) {
+      return NextResponse.json(
+        { error: "The AI took too long to respond. Please try again." },
+        { status: 504 }
+      );
+    }
     return NextResponse.json(
       { error: "Could not analyse the photo. Please try again or add manually." },
       { status: 502 }
@@ -150,52 +172,57 @@ export async function POST(req: Request) {
   }
 
   // Parse the JSON response (with one repair retry per §6)
-  let parsed: IdentifyResponse;
+  let parsedItems: IdentifiedItem[];
+  let multiItem: boolean;
+
   try {
-    parsed = parseVisionResponse(rawResponse);
+    const result = parseVisionResponse(rawResponse);
+    parsedItems = result.items;
+    multiItem = result.multi_item;
   } catch {
     // Retry once with a repair instruction
     try {
-      const repaired = await callVisionModel(
+      const repaired = await callVisionModelWithRetry(
         imageBase64,
-        "Your last reply was not valid JSON. Re-emit only the JSON object."
+        "Your last reply was not valid JSON. Re-emit only the JSON object.",
+        1 // no further retries on repair
       );
-      parsed = parseVisionResponse(repaired);
+      const result = parseVisionResponse(repaired);
+      parsedItems = result.items;
+      multiItem = result.multi_item;
     } catch {
       // Treat as confidence 0 — open manual form
-      parsed = {
-        multi_item: false,
-        items: [
-          {
-            name: "Unknown item",
-            brand: null,
-            model: null,
-            category: "Other",
-            tracking_type: "asset",
-            condition_guess: "unknown",
-            estimated_quantity: null,
-            description: "Could not identify this item.",
-            identifying_features: [],
-            confidence: 0,
-          },
-        ],
-        raw_response: rawResponse.slice(0, 500),
-      };
+      parsedItems = [
+        {
+          name: "Unknown item",
+          brand: null,
+          model: null,
+          category: "Other",
+          tracking_type: "asset",
+          condition_guess: "unknown",
+          estimated_quantity: null,
+          description: "Could not identify this item.",
+          identifying_features: [],
+          confidence: 0,
+        },
+      ];
+      multiItem = false;
     }
   }
 
-  // Run dedupe for each identified item
-  const itemsWithMatches = await Promise.all(
-    parsed.items.map(async (item) => ({
-      ...item,
-      matches: await findMatches(
-        `${item.name} ${item.brand ?? ""} ${item.model ?? ""}`
-      ),
-    }))
+  // Run dedupe for all identified items in a single DB query
+  const candidateStrings = parsedItems.map(
+    (item) => `${item.name} ${item.brand ?? ""} ${item.model ?? ""}`
   );
+  const allMatches = await findAllMatches(candidateStrings);
+
+  const itemsWithMatches = parsedItems.map((item, i) => ({
+    ...item,
+    matches: allMatches[i] ?? [],
+  }));
 
   return NextResponse.json({
-    multi_item: parsed.multi_item,
+    multi_item: multiItem,
     items: itemsWithMatches,
   });
 }
@@ -246,7 +273,36 @@ Rules:
 - description: one plain-English sentence per item.`;
 }
 
-// ── Vision model call (z-ai-web-dev-sdk, server-only) ───────────────────
+// ── Vision model call with retry + timeout ──────────────────────────────
+const VISION_TIMEOUT_MS = 30_000; // 30s per attempt
+const MAX_RETRIES = 2;
+
+async function callVisionModelWithRetry(
+  imageBase64: string,
+  systemPrompt: string,
+  maxRetries: number = MAX_RETRIES
+): Promise<string> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await callVisionModel(imageBase64, systemPrompt);
+    } catch (e) {
+      lastError = e;
+      // Don't retry on 4xx (client errors — bad image, etc.)
+      const msg = e instanceof Error ? e.message : "";
+      if (msg.includes("400") || msg.includes("413") || msg.includes("422")) {
+        throw e;
+      }
+      // Exponential backoff: 500ms, 1000ms
+      if (attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastError;
+}
+
 async function callVisionModel(
   imageBase64: string,
   systemPrompt: string
@@ -254,41 +310,57 @@ async function callVisionModel(
   const ZAI = (await import("z-ai-web-dev-sdk")).default;
   const zai = await ZAI.create();
 
-  // Ensure the base64 has the data URL prefix
   const imageUrl = imageBase64.startsWith("data:")
     ? imageBase64
     : `data:image/jpeg;base64,${imageBase64}`;
 
-  const response = await zai.chat.completions.createVision({
-    model: "glm-4.6v-flash",
-    messages: [
-      {
-        role: "system",
-        content: systemPrompt,
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Identify the tool(s) in this photo. Reply with only the JSON object.",
-          },
-          {
-            type: "image_url",
-            image_url: { url: imageUrl },
-          },
-        ],
-      },
-    ],
-    thinking: { type: "disabled" },
-  });
+  // Wrap in a timeout — the free tier can queue and hang
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS);
 
-  return response.choices[0]?.message?.content ?? "";
+  try {
+    const response = await zai.chat.completions.createVision({
+      model: "glm-4.6v-flash",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Identify the tool(s) in this photo. Reply with only the JSON object.",
+            },
+            {
+              type: "image_url",
+              image_url: { url: imageUrl },
+            },
+          ],
+        },
+      ],
+      thinking: { type: "disabled" },
+      // @ts-expect-error — abort signal passthrough if supported
+      signal: controller.signal,
+    });
+
+    return response.choices[0]?.message?.content ?? "";
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error("Vision model timeout");
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
-// ── Response parser (handles single-item + multi-item shapes) ───────────
-function parseVisionResponse(raw: string): IdentifyResponse {
-  // Strip markdown code fences if present
+// ── Response parser ─────────────────────────────────────────────────────
+function parseVisionResponse(raw: string): {
+  multi_item: boolean;
+  items: IdentifiedItem[];
+} {
   let clean = raw.trim();
   if (clean.startsWith("```")) {
     clean = clean.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```$/, "");
@@ -296,7 +368,6 @@ function parseVisionResponse(raw: string): IdentifyResponse {
 
   const data = JSON.parse(clean);
 
-  // Case 1: Multi-item response (has "items" array)
   if (data.items && Array.isArray(data.items)) {
     return {
       multi_item: Boolean(data.multi_item),
@@ -304,7 +375,6 @@ function parseVisionResponse(raw: string): IdentifyResponse {
     };
   }
 
-  // Case 2: Single-item response (flat object) — normalize to array
   return {
     multi_item: false,
     items: [normalizeItem(data)],

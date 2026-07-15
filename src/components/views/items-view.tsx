@@ -107,8 +107,13 @@ export function ItemsView() {
           minQuantity: number;
           photoUrl: string | null;
           categoryName: string | null;
+          homeLocationId: string | null;
+          currentLocationId: string | null;
           currentLocationName: string | null;
+          homeLocationName: string | null;
+          holderId: string | null;
           holderName: string | null;
+          expectedReturnDate: string | null;
         }>;
         total: number;
       }>;
@@ -467,7 +472,9 @@ export function ItemsView() {
         <LocationPickerSheet
           locations={locationsData?.locations ?? []}
           selectedId={
-            activeFilters.find((f) => f.key === "locationId")?.value ?? null
+            activeFilters.find(
+              (f) => f.key === "locationId" || f.key === "homeLocationId"
+            )?.value ?? null
           }
           onSelect={selectLocation}
           onClear={removeLocationFilter}

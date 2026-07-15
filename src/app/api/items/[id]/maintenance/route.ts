@@ -36,11 +36,16 @@ export async function GET(
   });
 }
 
+const dateString = z.string().refine(
+  (v) => !isNaN(Date.parse(v)),
+  "Invalid date"
+);
+
 const createSchema = z.object({
   description: z.string().min(1).max(500),
-  doneAt: z.string().optional(), // ISO date
+  doneAt: dateString.optional(),
   cost: z.number().min(0).optional().nullable(),
-  nextDue: z.string().optional().nullable(), // ISO date
+  nextDue: dateString.optional().nullable(),
 });
 
 // POST /api/items/[id]/maintenance — add a maintenance log entry

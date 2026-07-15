@@ -35,8 +35,8 @@ export type TxnAction = (typeof TXN_ACTIONS)[number];
 
 export const PHOTOS_DIR = path.join(process.cwd(), "public", "item-photos");
 
-/** Soft-delete restore window — items past this age are purged permanently. */
-export const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+/** Soft-delete restore window — re-exported from client-safe constants. */
+export { RESTORE_WINDOW_MS } from "@/lib/constants";
 
 /** Max base64 photo size (~1.5MB decoded, matches compressed JPEG budget). */
 export const MAX_PHOTO_BASE64_LEN = 2_000_000;

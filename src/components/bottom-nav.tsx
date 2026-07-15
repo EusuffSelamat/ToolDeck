@@ -34,7 +34,18 @@ export function BottomNav({
     >
       <div className="mx-auto flex h-16 max-w-md items-stretch justify-between px-2">
         {NAV.map((item) => {
-          const active = route.name === item.route.name;
+          // Map item-detail/new/edit → "items" so the Items tab stays highlighted
+          const activeRouteName =
+            route.name === "item-detail" ||
+            route.name === "item-new" ||
+            route.name === "item-edit"
+              ? "items"
+              : route.name;
+          // Trash + settings don't belong to any nav tab
+          const active =
+            activeRouteName === "items"
+              ? item.route.name === "items"
+              : route.name === item.route.name;
           const Icon = item.icon;
 
           if (item.center) {

@@ -69,14 +69,16 @@ export function ItemFormView({ id }: { id?: string }) {
 
   // AI prefill — when arriving from the scan result, pre-fill the form with
   // the AI identification + photo. Runs once on mount for new items only.
+  // The prefill is cleared unconditionally on first run so it can't leak
+  // to a future form open if the user navigates away before meta loads.
   const prefillApplied = useRef(false);
   useEffect(() => {
     if (isEdit || prefillApplied.current) return;
     const prefill = getAiPrefill();
-    if (!prefill || !meta) return;
+    if (!prefill) return;
     prefillApplied.current = true;
-    applyAiPrefill(prefill, meta.categories);
-    clearAiPrefill();
+    clearAiPrefill(); // always clear, even if meta isn't loaded yet
+    if (meta) applyAiPrefill(prefill, meta.categories);
   }, [isEdit, meta]);
 
   // Populate form when editing — guarded by a ref so React Query refetches

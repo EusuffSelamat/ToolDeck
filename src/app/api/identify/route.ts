@@ -94,6 +94,7 @@ async function findAllMatches(
       photoUrl: true,
       status: true,
     },
+    orderBy: { code: "asc" },
     take: 2000,
   });
 

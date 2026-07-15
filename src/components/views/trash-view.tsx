@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, RotateCcw, Trash2, Package } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
+import { RESTORE_WINDOW_DAYS } from "@/lib/constants";
 
 export function TrashView() {
   const [, navigate] = useHashRoute();
@@ -88,8 +89,8 @@ export function TrashView() {
         <div className="mt-5 space-y-3">
           {items.map((item) => {
             const daysLeft = item.deletedAt
-              ? Math.max(0, 30 - Math.floor((Date.now() - new Date(item.deletedAt).getTime()) / 86400000))
-              : 30;
+              ? Math.max(0, Math.ceil(RESTORE_WINDOW_DAYS - Math.floor((Date.now() - new Date(item.deletedAt).getTime()) / 86400000)))
+              : Math.ceil(RESTORE_WINDOW_DAYS);
             return (
               <div key={item.id} className="glass-card flex items-center gap-3 p-3">
                 <div

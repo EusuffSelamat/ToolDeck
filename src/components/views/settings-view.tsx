@@ -63,21 +63,13 @@ export function SettingsView() {
   }
 
   async function handleDeleteCategory(id: string, name: string) {
-    // Check if any items use this category
-    const res = await fetch(`/api/items?categoryId=${id}&limit=1`);
-    const data = await res.json();
-    if (data.items?.length > 0) {
-      toast({
-        title: "Cannot delete",
-        description: `${data.total} item(s) use this category. Reassign them first.`,
-      });
-      return;
-    }
-
+    // The DELETE endpoint atomically checks for items using this category
+    // and returns 409 with a clear message if any exist — no need for a
+    // separate pre-check (which would be racy).
     const delRes = await fetch(`/api/categories/${id}`, { method: "DELETE" });
     if (!delRes.ok) {
       const err = await delRes.json().catch(() => ({}));
-      toast({ title: "Delete failed", description: err.error ?? "Please try again." });
+      toast({ title: "Cannot delete", description: err.error ?? "Please try again." });
       return;
     }
     qc.invalidateQueries({ queryKey: ["meta"] });

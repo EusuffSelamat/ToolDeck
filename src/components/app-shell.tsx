@@ -11,6 +11,7 @@ import { ScanView } from "@/components/views/scan-view";
 import { LocationsView } from "@/components/views/locations-view";
 import { ActivityView } from "@/components/views/activity-view";
 import { TrashView } from "@/components/views/trash-view";
+import { SettingsView } from "@/components/views/settings-view";
 
 function renderView(route: Route) {
   switch (route.name) {
@@ -32,6 +33,8 @@ function renderView(route: Route) {
       return <ActivityView />;
     case "trash":
       return <TrashView />;
+    case "settings":
+      return <SettingsView />;
     default:
       return <DashboardView />;
   }

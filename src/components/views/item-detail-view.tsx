@@ -24,6 +24,7 @@ import { StatusPill, type ItemStatus } from "@/components/status-pill";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { ActionSheet } from "@/components/action-sheet";
+import { MaintenanceSection } from "@/components/maintenance-section";
 
 export function ItemDetailView({ id }: { id: string }) {
   const [, navigate] = useHashRoute();
@@ -352,6 +353,9 @@ export function ItemDetailView({ id }: { id: string }) {
           </p>
         </div>
       )}
+
+      {/* Maintenance section */}
+      {!item.isDeleted && <MaintenanceSection itemId={item.id} />}
 
       {/* History timeline */}
       <div className="mt-6">

@@ -16,6 +16,7 @@ import { useEffect, useState, useCallback } from "react";
  *   #/locations           → locations
  *   #/activity            → activity feed
  *   #/trash               → recently deleted
+ *   #/settings            → settings (categories, locations, profile, export)
  */
 export type Route =
   | { name: "dashboard" }
@@ -26,6 +27,7 @@ export type Route =
   | { name: "scan" }
   | { name: "locations" }
   | { name: "activity" }
+  | { name: "settings" }
   | { name: "trash" };
 
 export function parseHash(hash: string): Route {
@@ -50,6 +52,8 @@ export function parseHash(hash: string): Route {
       return { name: "activity" };
     case "trash":
       return { name: "trash" };
+    case "settings":
+      return { name: "settings" };
     default:
       return { name: "dashboard" };
   }
@@ -75,6 +79,8 @@ export function routeToHash(route: Route): string {
       return "#/activity";
     case "trash":
       return "#/trash";
+    case "settings":
+      return "#/settings";
     default:
       return "#/";
   }

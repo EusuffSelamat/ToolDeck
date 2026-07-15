@@ -2,10 +2,11 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Package, X, MapPin, ChevronDown, ArrowRight } from "lucide-react";
+import { Search, Plus, Package, X, MapPin, ChevronDown, ArrowRight, Download, FileText, Sheet } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
 import { getLocationFilter, clearLocationFilter, type LocationFilterMode } from "@/lib/location-filter";
+import { exportToCSV, exportToXLSX } from "@/lib/export";
 
 type FilterChip = {
   key: string;
@@ -57,6 +58,7 @@ export function ItemsView() {
   const [locationFilterName, setLocationFilterName] = useState<string | null>(initial.name);
   const [locationFilterMode, setLocationFilterMode] = useState<LocationFilterMode>(initial.mode);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
 
   // Fetch locations for the picker (cached, shared with Locations view)
   const { data: locationsData } = useQuery({
@@ -193,13 +195,62 @@ export function ItemsView() {
             {data ? `${data.total} total` : "Loading…"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => navigate({ name: "item-new" })}
-          className="btn-teal flex h-10 items-center gap-1.5 px-4 text-sm"
-        >
-          <Plus size={16} /> Add
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Export dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              disabled={!data || data.items.length === 0}
+              className="btn-ghost-teal flex h-10 w-10 items-center justify-center disabled:opacity-40"
+              aria-label="Export"
+            >
+              <Download size={16} />
+            </button>
+            {showExportMenu && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setShowExportMenu(false)}
+                />
+                <div
+                  className="glass-strong absolute right-0 top-12 z-50 w-44 rounded-xl p-2"
+                  style={{ border: "1px solid var(--color-border)" }}
+                >
+                  <button
+                    onClick={() => {
+                      exportToCSV(items, "tooldeck-items");
+                      setShowExportMenu(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-[rgba(25,227,196,0.06)]"
+                    style={{ color: "var(--color-text-hi)" }}
+                  >
+                    <FileText size={15} style={{ color: "var(--color-teal)" }} />
+                    CSV
+                  </button>
+                  <button
+                    onClick={() => {
+                      exportToXLSX(items, "tooldeck-items");
+                      setShowExportMenu(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-[rgba(25,227,196,0.06)]"
+                    style={{ color: "var(--color-text-hi)" }}
+                  >
+                    <Sheet size={15} style={{ color: "var(--color-teal)" }} />
+                    Excel (.xlsx)
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate({ name: "item-new" })}
+            className="btn-teal flex h-10 items-center gap-1.5 px-4 text-sm"
+          >
+            <Plus size={16} /> Add
+          </button>
+        </div>
       </div>
 
       {/* Location filter banner (when a location filter is active) */}

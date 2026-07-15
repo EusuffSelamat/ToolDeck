@@ -1,8 +1,9 @@
 "use client";
 
-import { Search, LogOut, User as UserIcon } from "lucide-react";
+import { Search, LogOut, User as UserIcon, Settings as SettingsIcon } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { BrandMark } from "@/components/brand-mark";
+import { useHashRoute } from "@/hooks/use-hash-route";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +15,7 @@ import {
 
 export function TopBar() {
   const { data: session } = useSession();
+  const [, navigate] = useHashRoute();
   const name = session?.user?.name ?? "User";
   const email = session?.user?.email ?? "";
   const initials = name
@@ -70,6 +72,14 @@ export function TopBar() {
               </span>
             </DropdownMenuLabel>
             <DropdownMenuSeparator style={{ background: "var(--color-border)" }} />
+            <DropdownMenuItem
+              onClick={() => navigate({ name: "settings" })}
+              className="cursor-pointer"
+              style={{ color: "var(--color-text-hi)" }}
+            >
+              <SettingsIcon size={15} />
+              Settings
+            </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => signOut({ callbackUrl: "/" })}
               className="cursor-pointer"

@@ -20,8 +20,11 @@ export function TrashView() {
           id: string;
           code: string;
           name: string;
+          brand: string | null;
+          model: string | null;
           photoUrl: string | null;
           categoryName: string | null;
+          deletedAt?: string | null;
         }>;
       }>;
     },
@@ -83,44 +86,58 @@ export function TrashView() {
         </div>
       ) : (
         <div className="mt-5 space-y-3">
-          {items.map((item) => (
-            <div key={item.id} className="glass-card flex items-center gap-3 p-3">
-              <div
-                className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl"
-                style={{
-                  border: "1px solid var(--color-border)",
-                  background: "rgba(6,17,17,0.6)",
-                }}
-              >
-                {item.photoUrl ? (
-                   
-                  <img
-                    src={item.photoUrl}
-                    alt={item.name}
-                    className="h-full w-full object-cover"
-                    style={{ opacity: 0.5 }}
-                  />
-                ) : (
-                  <Package size={16} style={{ color: "var(--color-text-low)" }} />
-                )}
-              </div>
-              <div className="min-w-0 flex-1">
-                <span className="micro-label">{item.code}</span>
-                <p
-                  className="truncate text-sm font-medium"
-                  style={{ color: "var(--color-text-mid)" }}
+          {items.map((item) => {
+            const daysLeft = item.deletedAt
+              ? Math.max(0, 30 - Math.floor((Date.now() - new Date(item.deletedAt).getTime()) / 86400000))
+              : 30;
+            return (
+              <div key={item.id} className="glass-card flex items-center gap-3 p-3">
+                <div
+                  className="flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl"
+                  style={{
+                    border: "1px solid var(--color-border)",
+                    background: "rgba(6,17,17,0.6)",
+                  }}
                 >
-                  {item.name}
-                </p>
+                  {item.photoUrl ? (
+                    <img
+                      src={item.photoUrl}
+                      alt={item.name}
+                      className="h-full w-full object-cover"
+                      style={{ opacity: 0.5 }}
+                    />
+                  ) : (
+                    <Package size={16} style={{ color: "var(--color-text-low)" }} />
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="micro-label">{item.code}</span>
+                  <p
+                    className="truncate text-sm font-medium"
+                    style={{ color: "var(--color-text-mid)" }}
+                  >
+                    {item.name}
+                  </p>
+                  {(item.brand || item.model) && (
+                    <p className="truncate text-xs" style={{ color: "var(--color-text-low)" }}>
+                      {[item.brand, item.model].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                  <p className="text-[10px]" style={{
+                    color: daysLeft <= 3 ? "var(--color-magenta)" : "var(--color-text-low)",
+                  }}>
+                    {daysLeft <= 3 ? `Expires in ${daysLeft}d` : `${daysLeft}d left`}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleRestore(item.id, item.code)}
+                  className="btn-ghost-teal flex h-9 items-center gap-1.5 px-3 text-xs"
+                >
+                  <RotateCcw size={14} /> Restore
+                </button>
               </div>
-              <button
-                onClick={() => handleRestore(item.id, item.code)}
-                className="btn-ghost-teal flex h-9 items-center gap-1.5 px-3 text-xs"
-              >
-                <RotateCcw size={14} /> Restore
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

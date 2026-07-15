@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { z } from "zod";
 import { promises as fs } from "fs";
 import path from "path";
+import { randomBytes } from "crypto";
 
 // ── Constants ────────────────────────────────────────────────────────────
 export const TRACKING_TYPES = ["asset", "stock"] as const;
@@ -34,6 +35,12 @@ export type TxnAction = (typeof TXN_ACTIONS)[number];
 
 export const PHOTOS_DIR = path.join(process.cwd(), "public", "item-photos");
 
+/** Soft-delete restore window — items past this age are purged permanently. */
+export const RESTORE_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/** Max base64 photo size (~1.5MB decoded, matches compressed JPEG budget). */
+export const MAX_PHOTO_BASE64_LEN = 2_000_000;
+
 // ── Zod schemas (API-layer validation — SQLite has no enums) ─────────────
 export const itemCreateSchema = z.object({
   name: z.string().min(1).max(200),
@@ -48,7 +55,8 @@ export const itemCreateSchema = z.object({
   homeLocationId: z.string().optional().nullable(),
   currentLocationId: z.string().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
-  photoBase64: z.string().optional(),
+  photoBase64: z.string().max(MAX_PHOTO_BASE64_LEN).optional(),
+  aiConfidence: z.number().min(0).max(1).optional(),
 });
 
 export const itemUpdateSchema = z.object({
@@ -66,12 +74,13 @@ export const itemUpdateSchema = z.object({
   currentLocationId: z.string().optional().nullable(),
   holderId: z.string().optional().nullable(),
   notes: z.string().max(2000).optional().nullable(),
-  photoBase64: z.string().optional(),
+  photoBase64: z.string().max(MAX_PHOTO_BASE64_LEN).optional(),
+  aiConfidence: z.number().min(0).max(1).optional(),
 });
 
 // ── Code assignment (replaces Postgres sequences) ───────────────────────
-// Called within a Prisma $transaction for safety. At ≤2000-item scale the
-// read-then-write race is negligible; the transaction adds a safety net.
+// Reads the max existing code number for the prefix and increments.
+// Callers MUST wrap the create in a transaction and retry on P2002.
 export async function nextItemCode(trackingType: TrackingType): Promise<string> {
   const prefix = trackingType === "asset" ? "AST" : "STK";
   const items = await db.item.findMany({
@@ -86,9 +95,9 @@ export async function nextItemCode(trackingType: TrackingType): Promise<string> 
 }
 
 // ── Photo save (replaces Supabase Storage bucket) ───────────────────────
-// Receives a compressed base64 JPEG (client compresses to max-edge 1280px,
-// quality 0.8 before sending). Saves to public/item-photos/{code}.jpg.
-// Returns the publicly accessible URL path.
+// Writes to a temp file first, then renames atomically. If the DB create
+// fails, the temp file is cleaned up. Validates JPEG magic bytes.
+// Returns the publicly accessible URL path, or throws on failure.
 export async function savePhoto(
   code: string,
   base64: string
@@ -97,11 +106,44 @@ export async function savePhoto(
   const clean = base64.replace(/^data:image\/\w+;base64,/, "");
   const buffer = Buffer.from(clean, "base64");
 
+  // Validate JPEG magic bytes (FF D8 FF)
+  if (
+    buffer.length < 3 ||
+    buffer[0] !== 0xff ||
+    buffer[1] !== 0xd8 ||
+    buffer[2] !== 0xff
+  ) {
+    throw new Error("Invalid JPEG data");
+  }
+
   await fs.mkdir(PHOTOS_DIR, { recursive: true });
   const filename = `${code}.jpg`;
-  await fs.writeFile(path.join(PHOTOS_DIR, filename), buffer);
+  const finalPath = path.join(PHOTOS_DIR, filename);
+  const tempPath = path.join(PHOTOS_DIR, `${code}.tmp.${randomBytes(4).toString("hex")}.jpg`);
+
+  // Write to temp, then rename atomically
+  await fs.writeFile(tempPath, buffer);
+  await fs.rename(tempPath, finalPath);
 
   return `/item-photos/${filename}`;
+}
+
+/** Delete a photo file. Safe to call if the file doesn't exist. */
+export async function deletePhoto(photoUrl: string | null): Promise<void> {
+  if (!photoUrl) return;
+  const filename = path.basename(photoUrl);
+  const filepath = path.join(PHOTOS_DIR, filename);
+  try {
+    await fs.unlink(filepath);
+  } catch {
+    // File doesn't exist or already deleted — fine
+  }
+}
+
+/** Check if a soft-deleted item is still within the restore window. */
+export function isRestorable(deletedAt: Date | null): boolean {
+  if (!deletedAt) return false;
+  return Date.now() - deletedAt.getTime() <= RESTORE_WINDOW_MS;
 }
 
 // ── Types for API responses ─────────────────────────────────────────────
@@ -122,6 +164,7 @@ export type ItemListItem = {
   homeLocationName: string | null;
   holderName: string | null;
   updatedAt: Date;
+  deletedAt?: Date | null;
 };
 
 export type ItemDetail = {
@@ -148,6 +191,7 @@ export type ItemDetail = {
   aiConfidence: number | null;
   notes: string | null;
   isDeleted: boolean;
+  deletedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   transactions: TxnListItem[];

@@ -16,8 +16,11 @@ export function Toaster() {
   return (
     <ToastProvider>
       {toasts.map(function ({ id, title, description, action, ...props }) {
+        // Action toasts (e.g. Undo) get a longer duration so the user has
+        // time to tap the button — default 5s is too short on mobile.
+        const duration = action ? 8000 : 5000
         return (
-          <Toast key={id} {...props}>
+          <Toast key={id} {...props} duration={duration}>
             <div className="grid gap-1">
               {title && <ToastTitle>{title}</ToastTitle>}
               {description && (

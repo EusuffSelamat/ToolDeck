@@ -50,6 +50,8 @@ export function ItemDetailView({ id }: { id: string }) {
           photoUrl: string | null;
           aiConfidence: number | null;
           notes: string | null;
+          isDeleted: boolean;
+          deletedAt: string | null;
           createdAt: string;
           updatedAt: string;
           transactions: Array<{
@@ -94,6 +96,11 @@ export function ItemDetailView({ id }: { id: string }) {
               qc.invalidateQueries({ queryKey: ["items"] });
               qc.invalidateQueries({ queryKey: ["trash"] });
               toast({ title: "Restored", description: `${data.item.code} is back.` });
+            } else {
+              toast({
+                title: "Undo failed",
+                description: "Find it in Recently Deleted to retry.",
+              });
             }
           }}
         >
@@ -150,7 +157,7 @@ export function ItemDetailView({ id }: { id: string }) {
         <div className="absolute left-3 top-3">
           <StatusPill status={item.status} />
         </div>
-        {item.aiConfidence !== null && (
+        {item.aiConfidence != null && item.aiConfidence > 0 && (
           <div
             className="absolute right-3 top-3 rounded-full px-2.5 py-1 text-[10px] font-semibold"
             style={{
@@ -176,27 +183,57 @@ export function ItemDetailView({ id }: { id: string }) {
             </p>
           )}
         </div>
-        <div className="flex gap-2">
+        {/* Hide edit/delete when soft-deleted */}
+        {!item.isDeleted && (
+          <div className="flex gap-2">
+            <button
+              onClick={() => navigate({ name: "item-edit", id: item.id })}
+              className="btn-ghost-teal flex h-9 w-9 items-center justify-center"
+              aria-label="Edit"
+            >
+              <Pencil size={16} />
+            </button>
+            <button
+              onClick={handleDelete}
+              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[rgba(224,86,107,0.1)]"
+              style={{
+                border: "1px solid rgba(224,86,107,0.3)",
+                color: "var(--color-danger)",
+              }}
+              aria-label="Delete"
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Deleted banner */}
+      {item.isDeleted && (
+        <div
+          className="glass-card mt-3 flex items-center gap-3 p-3"
+          style={{ borderColor: "rgba(224,86,107,0.3)" }}
+        >
+          <Trash2 size={16} style={{ color: "var(--color-danger)" }} />
+          <p className="flex-1 text-sm" style={{ color: "var(--color-text-mid)" }}>
+            This item is deleted. Restore it from Recently Deleted.
+          </p>
           <button
-            onClick={() => navigate({ name: "item-edit", id: item.id })}
-            className="btn-ghost-teal flex h-9 w-9 items-center justify-center"
-            aria-label="Edit"
-          >
-            <Pencil size={16} />
-          </button>
-          <button
-            onClick={handleDelete}
-            className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[rgba(224,86,107,0.1)]"
-            style={{
-              border: "1px solid rgba(224,86,107,0.3)",
-              color: "var(--color-danger)",
+            onClick={async () => {
+              const res = await fetch(`/api/items/${id}/restore`, { method: "POST" });
+              if (res.ok) {
+                qc.invalidateQueries({ queryKey: ["item", id] });
+                qc.invalidateQueries({ queryKey: ["items"] });
+                qc.invalidateQueries({ queryKey: ["trash"] });
+                toast({ title: "Restored", description: `${item.code} is back.` });
+              }
             }}
-            aria-label="Delete"
+            className="btn-ghost-teal flex h-8 items-center px-3 text-xs"
           >
-            <Trash2 size={16} />
+            Restore
           </button>
         </div>
-      </div>
+      )}
 
       {/* Spec grid */}
       <div className="glass-card mt-4 divide-y" style={{ borderColor: "var(--color-border)" }}>
@@ -226,7 +263,7 @@ export function ItemDetailView({ id }: { id: string }) {
             />
           </>
         )}
-        <SpecRow icon={Wrench} label="Condition" value={item.condition.replace("_", " ")} />
+        <SpecRow icon={Wrench} label="Condition" value={item.condition.replace(/_/g, " ")} />
         <SpecRow
           icon={MapPin}
           label="Home location"

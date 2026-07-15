@@ -1,13 +1,20 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
 import {
   itemCreateSchema,
   nextItemCode,
   savePhoto,
+  deletePhoto,
   type ItemListItem,
   type TrackingType,
 } from "@/lib/items";
+
+function safeInt(val: string | null, fallback: number): number {
+  const n = parseInt(val ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
 
 // GET /api/items — list with search + filters.
 // Query params: q, categoryId, status, locationId, trackingType,
@@ -19,7 +26,7 @@ export async function GET(req: Request) {
   }
 
   const url = new URL(req.url);
-  const q = url.searchParams.get("q")?.trim() || "";
+  const q = url.searchParams.get("q")?.trim().slice(0, 200) || "";
   const categoryId = url.searchParams.get("categoryId");
   const status = url.searchParams.get("status");
   const locationId = url.searchParams.get("locationId");
@@ -27,8 +34,8 @@ export async function GET(req: Request) {
   const holderMe = url.searchParams.get("holder") === "me";
   const lowStock = url.searchParams.get("lowStock") === "true";
   const deleted = url.searchParams.get("deleted") === "true";
-  const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
-  const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10)));
+  const page = safeInt(url.searchParams.get("page"), 1);
+  const limit = Math.min(100, safeInt(url.searchParams.get("limit"), 50));
 
   // Build the where clause
   const where: Record<string, unknown> = { isDeleted: deleted };
@@ -45,14 +52,13 @@ export async function GET(req: Request) {
   if (categoryId) where.categoryId = categoryId;
   if (status) where.status = status;
   if (locationId) where.currentLocationId = locationId;
-  if (trackingType) where.trackingType = trackingType;
-  if (holderMe) where.holderId = session.user.id;
-  if (lowStock) {
+  // lowStock implies stock type — but don't overwrite an explicit trackingType
+  if (trackingType) {
+    where.trackingType = trackingType;
+  } else if (lowStock) {
     where.trackingType = "stock";
-    where.isDeleted = false;
-    // SQLite doesn't support column-to-column comparison in Prisma where,
-    // so we filter low-stock in JS after fetching. At ≤2000 items this is fine.
   }
+  if (holderMe) where.holderId = session.user.id;
 
   const [total, items] = await Promise.all([
     db.item.count({ where }),
@@ -70,7 +76,7 @@ export async function GET(req: Request) {
     }),
   ]);
 
-  // Low-stock post-filter (quantity <= minQuantity)
+  // Low-stock post-filter (SQLite can't compare columns in WHERE)
   let result = items.map((item) => ({
     id: item.id,
     code: item.code,
@@ -88,17 +94,25 @@ export async function GET(req: Request) {
     homeLocationName: item.homeLocation?.name ?? null,
     holderName: item.holder?.fullName ?? null,
     updatedAt: item.updatedAt,
+    deletedAt: item.deletedAt,
   })) as ItemListItem[];
 
   if (lowStock) {
     result = result.filter((i) => i.quantity <= i.minQuantity);
   }
 
-  return NextResponse.json({ items: result, total: lowStock ? result.length : total, page, limit });
+  return NextResponse.json({
+    items: result,
+    total: lowStock ? result.length : total,
+    page,
+    limit,
+    hasMore: page * limit < total,
+  });
 }
 
 // POST /api/items — create a new item.
 // Assigns AST-####/STK-#### code, saves photo if provided, writes 'add' transaction.
+// Retries on code-collision (P2002) up to 3 times.
 export async function POST(req: Request) {
   const session = await requireAuth();
   if (!session) {
@@ -115,51 +129,105 @@ export async function POST(req: Request) {
   }
   const data = parsed.data;
 
-  // Assign code + save photo in a transaction
-  const code = await nextItemCode(data.trackingType as TrackingType);
-
-  let photoUrl: string | null = null;
-  if (data.photoBase64) {
-    try {
-      photoUrl = await savePhoto(code, data.photoBase64);
-    } catch {
-      // Photo save failure is non-fatal — item still creates without photo
-    }
-  }
-
   // Set defaults: currentLocation falls back to homeLocation
   const currentLocationId = data.currentLocationId ?? data.homeLocationId ?? null;
 
-  const item = await db.item.create({
-    data: {
-      code,
-      name: data.name.trim(),
-      brand: data.brand?.trim() || null,
-      model: data.model?.trim() || null,
-      serialNo: data.serialNo?.trim() || null,
-      categoryId: data.categoryId || null,
-      trackingType: data.trackingType,
-      status: data.trackingType === "stock" ? "available" : "available",
-      quantity: data.trackingType === "stock" ? data.quantity : 1,
-      minQuantity: data.trackingType === "stock" ? data.minQuantity : 0,
-      condition: data.condition,
-      homeLocationId: data.homeLocationId || null,
-      currentLocationId,
-      notes: data.notes?.trim() || null,
-      photoUrl,
-      createdBy: session.user.id,
-    },
-  });
+  // Retry loop for code-assignment race condition
+  const MAX_RETRIES = 3;
+  let lastError: unknown = null;
 
-  // Write the 'add' audit transaction
-  await db.transaction.create({
-    data: {
-      itemId: item.id,
-      action: "add",
-      personId: session.user.id,
-      note: `Added as ${code}`,
-    },
-  });
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    const code = await nextItemCode(data.trackingType as TrackingType);
 
-  return NextResponse.json({ item: { id: item.id, code: item.code } }, { status: 201 });
+    // Save photo to temp file before DB create (atomic rename happens in savePhoto)
+    let photoUrl: string | null = null;
+    let photoSaved = false;
+    if (data.photoBase64) {
+      try {
+        photoUrl = await savePhoto(code, data.photoBase64);
+        photoSaved = true;
+      } catch (e) {
+        console.error("Photo save failed on create:", e);
+        // Non-fatal — item creates without photo, user is warned
+      }
+    }
+
+    try {
+      // Transaction: item create + audit transaction are atomic
+      const item = await db.$transaction(async (tx) => {
+        const created = await tx.item.create({
+          data: {
+            code,
+            name: data.name.trim(),
+            brand: data.brand?.trim() || null,
+            model: data.model?.trim() || null,
+            serialNo: data.serialNo?.trim() || null,
+            categoryId: data.categoryId || null,
+            trackingType: data.trackingType,
+            status: "available",
+            quantity: data.trackingType === "stock" ? data.quantity : 1,
+            minQuantity: data.trackingType === "stock" ? data.minQuantity : 0,
+            condition: data.condition,
+            homeLocationId: data.homeLocationId || null,
+            currentLocationId,
+            notes: data.notes?.trim() || null,
+            photoUrl,
+            aiConfidence: data.aiConfidence ?? null,
+            createdBy: session.user.id,
+          },
+        });
+
+        await tx.transaction.create({
+          data: {
+            itemId: created.id,
+            action: "add",
+            personId: session.user.id,
+            note: `Added as ${code}`,
+          },
+        });
+
+        return created;
+      });
+
+      return NextResponse.json(
+        { item: { id: item.id, code: item.code }, photoSaved },
+        { status: 201 }
+      );
+    } catch (e) {
+      lastError = e;
+
+      // P2002 = unique constraint violation (code collision) — retry with next code
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        // Clean up the orphaned photo from this failed attempt
+        if (photoSaved && photoUrl) {
+          await deletePhoto(photoUrl).catch(() => {});
+        }
+        continue; // retry with a fresh code
+      }
+
+      // P2003 = FK constraint — category/location doesn't exist
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+        if (photoSaved && photoUrl) await deletePhoto(photoUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Selected category or location no longer exists." },
+          { status: 400 }
+        );
+      }
+
+      // Other errors — clean up photo and rethrow
+      if (photoSaved && photoUrl) await deletePhoto(photoUrl).catch(() => {});
+      console.error("Item create failed:", e);
+      return NextResponse.json(
+        { error: "Could not create item. Please try again." },
+        { status: 500 }
+      );
+    }
+  }
+
+  // Exhausted retries
+  console.error("Item create failed after retries:", lastError);
+  return NextResponse.json(
+    { error: "Could not assign a unique code. Please try again." },
+    { status: 503 }
+  );
 }

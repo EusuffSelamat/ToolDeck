@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
-import { itemUpdateSchema, savePhoto, type ItemDetail } from "@/lib/items";
+import {
+  itemUpdateSchema,
+  savePhoto,
+  isRestorable,
+  type ItemDetail,
+} from "@/lib/items";
 
-// GET /api/items/[id] — full detail with relations + transaction history
+// GET /api/items/[id] — full detail with relations + transaction history.
+// Returns deleted items too (so the detail view can show a "deleted" banner).
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -24,7 +31,7 @@ export async function GET(
       holder: { select: { fullName: true } },
       transactions: {
         orderBy: { createdAt: "desc" },
-        take: 100,
+        take: 50,
         include: {
           person: { select: { fullName: true } },
           holder: { select: { fullName: true } },
@@ -35,9 +42,6 @@ export async function GET(
     },
   });
 
-  if (!item || (item.isDeleted && false)) {
-    // Allow viewing deleted items from the trash view
-  }
   if (!item) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -66,6 +70,7 @@ export async function GET(
     aiConfidence: item.aiConfidence,
     notes: item.notes,
     isDeleted: item.isDeleted,
+    deletedAt: item.deletedAt,
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
     transactions: item.transactions.map((t) => ({
@@ -84,7 +89,8 @@ export async function GET(
   return NextResponse.json({ item: detail });
 }
 
-// PATCH /api/items/[id] — edit fields. Writes an 'edit' transaction.
+// PATCH /api/items/[id] — edit fields. Writes an 'edit' transaction with a
+// summary of changed fields. Skips the write entirely if nothing changed.
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -110,50 +116,124 @@ export async function PATCH(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  // Handle photo: save new photo if provided (overwrites old filename since
-  // photos are named by code, which is immutable)
+  // Handle photo: save new photo if provided
   let photoUrl = existing.photoUrl;
+  let photoChanged = false;
   if (data.photoBase64) {
     try {
       photoUrl = await savePhoto(existing.code, data.photoBase64);
-    } catch {
-      // non-fatal
+      photoChanged = true;
+    } catch (e) {
+      console.error("Photo save failed on edit:", e);
+      return NextResponse.json(
+        { error: "Could not save photo. Item was not updated." },
+        { status: 500 }
+      );
     }
   }
 
-  // Build update data (only provided fields)
+  // Build update data (only provided fields) + track changed field names
   const updateData: Record<string, unknown> = {};
-  if (data.name !== undefined) updateData.name = data.name.trim();
-  if (data.brand !== undefined) updateData.brand = data.brand?.trim() || null;
-  if (data.model !== undefined) updateData.model = data.model?.trim() || null;
-  if (data.serialNo !== undefined) updateData.serialNo = data.serialNo?.trim() || null;
-  if (data.categoryId !== undefined) updateData.categoryId = data.categoryId || null;
-  if (data.status !== undefined) updateData.status = data.status;
-  if (data.quantity !== undefined) updateData.quantity = data.quantity;
-  if (data.minQuantity !== undefined) updateData.minQuantity = data.minQuantity;
-  if (data.condition !== undefined) updateData.condition = data.condition;
-  if (data.homeLocationId !== undefined) updateData.homeLocationId = data.homeLocationId || null;
-  if (data.currentLocationId !== undefined) updateData.currentLocationId = data.currentLocationId || null;
-  if (data.holderId !== undefined) updateData.holderId = data.holderId || null;
-  if (data.notes !== undefined) updateData.notes = data.notes?.trim() || null;
-  if (photoUrl !== existing.photoUrl) updateData.photoUrl = photoUrl;
+  const changedFields: string[] = [];
 
-  const item = await db.item.update({
-    where: { id },
-    data: updateData,
-  });
+  if (data.name !== undefined && data.name.trim() !== existing.name) {
+    updateData.name = data.name.trim();
+    changedFields.push("name");
+  }
+  if (data.brand !== undefined && (data.brand?.trim() || null) !== existing.brand) {
+    updateData.brand = data.brand?.trim() || null;
+    changedFields.push("brand");
+  }
+  if (data.model !== undefined && (data.model?.trim() || null) !== existing.model) {
+    updateData.model = data.model?.trim() || null;
+    changedFields.push("model");
+  }
+  if (data.serialNo !== undefined && (data.serialNo?.trim() || null) !== existing.serialNo) {
+    updateData.serialNo = data.serialNo?.trim() || null;
+    changedFields.push("serial");
+  }
+  if (data.categoryId !== undefined && (data.categoryId || null) !== existing.categoryId) {
+    updateData.categoryId = data.categoryId || null;
+    changedFields.push("category");
+  }
+  if (data.status !== undefined && data.status !== existing.status) {
+    updateData.status = data.status;
+    changedFields.push("status");
+  }
+  if (data.quantity !== undefined && data.quantity !== existing.quantity) {
+    updateData.quantity = data.quantity;
+    changedFields.push("quantity");
+  }
+  if (data.minQuantity !== undefined && data.minQuantity !== existing.minQuantity) {
+    updateData.minQuantity = data.minQuantity;
+    changedFields.push("min quantity");
+  }
+  if (data.condition !== undefined && data.condition !== existing.condition) {
+    updateData.condition = data.condition;
+    changedFields.push("condition");
+  }
+  if (data.homeLocationId !== undefined && (data.homeLocationId || null) !== existing.homeLocationId) {
+    updateData.homeLocationId = data.homeLocationId || null;
+    changedFields.push("home location");
+  }
+  if (data.currentLocationId !== undefined && (data.currentLocationId || null) !== existing.currentLocationId) {
+    updateData.currentLocationId = data.currentLocationId || null;
+    changedFields.push("current location");
+  }
+  if (data.holderId !== undefined && (data.holderId || null) !== existing.holderId) {
+    updateData.holderId = data.holderId || null;
+    changedFields.push("holder");
+  }
+  if (data.notes !== undefined && (data.notes?.trim() || null) !== existing.notes) {
+    updateData.notes = data.notes?.trim() || null;
+    changedFields.push("notes");
+  }
+  if (data.aiConfidence !== undefined && data.aiConfidence !== existing.aiConfidence) {
+    updateData.aiConfidence = data.aiConfidence;
+    changedFields.push("AI confidence");
+  }
+  if (photoChanged) {
+    updateData.photoUrl = photoUrl;
+    changedFields.push("photo");
+  }
 
-  // Write 'edit' audit transaction
-  await db.transaction.create({
-    data: {
-      itemId: item.id,
-      action: "edit",
-      personId: session.user.id,
-      note: "Details updated",
-    },
-  });
+  // No changes — skip the write and the audit transaction
+  if (changedFields.length === 0) {
+    return NextResponse.json({ item: { id }, unchanged: true });
+  }
 
-  return NextResponse.json({ item: { id: item.id } });
+  try {
+    // Transaction: update + audit are atomic
+    await db.$transaction(async (tx) => {
+      await tx.item.update({
+        where: { id },
+        data: updateData,
+      });
+
+      await tx.transaction.create({
+        data: {
+          itemId: id,
+          action: "edit",
+          personId: session.user.id,
+          note: `Updated: ${changedFields.join(", ")}`,
+        },
+      });
+    });
+
+    return NextResponse.json({ item: { id } });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+      return NextResponse.json(
+        { error: "Selected category or location no longer exists." },
+        { status: 400 }
+      );
+    }
+    console.error("Item update failed:", e);
+    return NextResponse.json(
+      { error: "Could not update item. Please try again." },
+      { status: 500 }
+    );
+  }
 }
 
 // DELETE /api/items/[id] — soft delete. Sets isDeleted=true, writes 'delete' transaction.
@@ -174,18 +254,21 @@ export async function DELETE(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  await db.item.update({
-    where: { id },
-    data: { isDeleted: true, deletedAt: new Date() },
-  });
+  // Transaction: soft-delete + audit are atomic
+  await db.$transaction(async (tx) => {
+    await tx.item.update({
+      where: { id },
+      data: { isDeleted: true, deletedAt: new Date() },
+    });
 
-  await db.transaction.create({
-    data: {
-      itemId: id,
-      action: "delete",
-      personId: session.user.id,
-      note: `Soft-deleted ${existing.code}`,
-    },
+    await tx.transaction.create({
+      data: {
+        itemId: id,
+        action: "delete",
+        personId: session.user.id,
+        note: `Soft-deleted ${existing.code}`,
+      },
+    });
   });
 
   return NextResponse.json({ ok: true, id });

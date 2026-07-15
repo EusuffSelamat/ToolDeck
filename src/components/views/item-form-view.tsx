@@ -12,6 +12,7 @@ import {
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
 import { compressImage } from "@/lib/compress-image";
+import { getAiPrefill, clearAiPrefill, type AiPrefill } from "@/lib/ai-prefill";
 
 type Meta = {
   categories: Array<{ id: string; name: string }>;
@@ -39,6 +40,7 @@ export function ItemFormView({ id }: { id?: string }) {
   const [notes, setNotes] = useState("");
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [aiConfidence, setAiConfidence] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [photoBusy, setPhotoBusy] = useState(false);
 
@@ -65,38 +67,52 @@ export function ItemFormView({ id }: { id?: string }) {
     enabled: isEdit,
   });
 
-  // Populate form when editing
+  // AI prefill — when arriving from the scan result, pre-fill the form with
+  // the AI identification + photo. Runs once on mount for new items only.
+  const prefillApplied = useRef(false);
   useEffect(() => {
-    if (existing?.item) {
-      const it = existing.item as {
-        name: string;
-        brand: string | null;
-        model: string | null;
-        serialNo: string | null;
-        categoryId: string | null;
-        trackingType: string;
-        quantity: number;
-        minQuantity: number;
-        condition: string;
-        homeLocationId: string | null;
-        currentLocationId: string | null;
-        notes: string | null;
-        photoUrl: string | null;
-      };
-      setName(it.name);
-      setBrand(it.brand ?? "");
-      setModel(it.model ?? "");
-      setSerialNo(it.serialNo ?? "");
-      setCategoryId(it.categoryId ?? "");
-      setTrackingType(it.trackingType as "asset" | "stock");
-      setQuantity(String(it.quantity));
-      setMinQuantity(String(it.minQuantity));
-      setCondition(it.condition);
-      setHomeLocationId(it.homeLocationId ?? "");
-      setCurrentLocationId(it.currentLocationId ?? "");
-      setNotes(it.notes ?? "");
-      setPhotoPreview(it.photoUrl);
-    }
+    if (isEdit || prefillApplied.current) return;
+    const prefill = getAiPrefill();
+    if (!prefill || !meta) return;
+    prefillApplied.current = true;
+    applyAiPrefill(prefill, meta.categories);
+    clearAiPrefill();
+  }, [isEdit, meta]);
+
+  // Populate form when editing — guarded by a ref so React Query refetches
+  // (staleTime expiry, invalidation) don't overwrite in-progress edits.
+  const initialised = useRef(false);
+  useEffect(() => {
+    if (!existing?.item || initialised.current) return;
+    initialised.current = true;
+    const it = existing.item as {
+      name: string;
+      brand: string | null;
+      model: string | null;
+      serialNo: string | null;
+      categoryId: string | null;
+      trackingType: string;
+      quantity: number;
+      minQuantity: number;
+      condition: string;
+      homeLocationId: string | null;
+      currentLocationId: string | null;
+      notes: string | null;
+      photoUrl: string | null;
+    };
+    setName(it.name);
+    setBrand(it.brand ?? "");
+    setModel(it.model ?? "");
+    setSerialNo(it.serialNo ?? "");
+    setCategoryId(it.categoryId ?? "");
+    setTrackingType(it.trackingType as "asset" | "stock");
+    setQuantity(String(it.quantity));
+    setMinQuantity(String(it.minQuantity));
+    setCondition(it.condition);
+    setHomeLocationId(it.homeLocationId ?? "");
+    setCurrentLocationId(it.currentLocationId ?? "");
+    setNotes(it.notes ?? "");
+    setPhotoPreview(it.photoUrl);
   }, [existing]);
 
   async function handlePhotoSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -128,19 +144,25 @@ export function ItemFormView({ id }: { id?: string }) {
     }
     setBusy(true);
 
+    // Parse numeric fields safely (0 is a valid quantity — don't || it away)
+    const q = parseFloat(quantity);
+    const mq = parseFloat(minQuantity);
+
     const payload: Record<string, unknown> = {
       name: name.trim(),
       brand: brand.trim() || null,
       model: model.trim() || null,
       serialNo: serialNo.trim() || null,
       categoryId: categoryId || null,
-      trackingType,
-      quantity: parseFloat(quantity) || 1,
-      minQuantity: parseFloat(minQuantity) || 0,
+      // trackingType is only sent on create (immutable after)
+      ...(isEdit ? {} : { trackingType }),
+      quantity: Number.isFinite(q) ? q : 1,
+      minQuantity: Number.isFinite(mq) ? mq : 0,
       condition,
       homeLocationId: homeLocationId || null,
       currentLocationId: currentLocationId || null,
       notes: notes.trim() || null,
+      ...(aiConfidence !== null ? { aiConfidence } : {}),
     };
     if (photoBase64) payload.photoBase64 = photoBase64;
 
@@ -203,8 +225,20 @@ export function ItemFormView({ id }: { id?: string }) {
         {isEdit ? "Edit item" : "Add item"}
       </h1>
       <p className="micro-label mt-1">
-        {isEdit ? "Update details" : "Manual entry"}
+        {isEdit ? "Update details" : aiConfidence !== null ? "AI pre-filled — review & save" : "Manual entry"}
       </p>
+      {aiConfidence !== null && aiConfidence > 0 && (
+        <div
+          className="mt-2 inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-semibold"
+          style={{
+            background: "rgba(25,227,196,0.1)",
+            color: "var(--color-teal)",
+            border: "1px solid rgba(25,227,196,0.3)",
+          }}
+        >
+          ✨ AI identified · {Math.round(aiConfidence * 100)}% confidence
+        </div>
+      )}
 
       <form onSubmit={handleSubmit} className="mt-5 space-y-5">
         {/* Photo capture */}
@@ -267,12 +301,22 @@ export function ItemFormView({ id }: { id?: string }) {
           )}
         </div>
 
-        {/* Tracking type toggle */}
+        {/* Tracking type toggle (disabled in edit mode — immutable after creation) */}
         <div>
-          <span className="micro-label mb-2 block">Tracking type</span>
+          <span className="micro-label mb-2 block">
+            Tracking type
+            {isEdit && (
+              <span style={{ color: "var(--color-text-low)" }}> · locked</span>
+            )}
+          </span>
           <div
             className="flex gap-1 rounded-full p-1"
-            style={{ border: "1px solid var(--color-border)" }}
+            style={{
+              border: "1px solid var(--color-border)",
+              opacity: isEdit ? 0.5 : 1,
+              pointerEvents: isEdit ? "none" : "auto",
+            }}
+            aria-disabled={isEdit}
           >
             <TypeToggle
               active={trackingType === "asset"}
@@ -485,6 +529,26 @@ export function ItemFormView({ id }: { id?: string }) {
       </form>
     </div>
   );
+
+  // Apply AI prefill data from the scan result
+  function applyAiPrefill(
+    prefill: AiPrefill,
+    categories: Array<{ id: string; name: string }>
+  ) {
+    setName(prefill.name);
+    setBrand(prefill.brand ?? "");
+    setModel(prefill.model ?? "");
+    setTrackingType(prefill.trackingType);
+    setCondition(prefill.condition);
+    if (prefill.quantity !== undefined) setQuantity(String(prefill.quantity));
+    // Resolve category name → id
+    const cat = categories.find((c) => c.name === prefill.category);
+    if (cat) setCategoryId(cat.id);
+    // Set the photo
+    setPhotoBase64(prefill.photoBase64);
+    setPhotoPreview(prefill.photoBase64);
+    setAiConfidence(prefill.aiConfidence);
+  }
 }
 
 function TypeToggle({

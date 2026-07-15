@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -23,16 +24,25 @@ export async function POST(req: Request) {
   const { name, email, password } = parsed.data;
   const lower = email.toLowerCase().trim();
 
-  const existing = await db.user.findUnique({ where: { email: lower } });
-  if (existing) {
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  try {
+    await db.user.create({
+      data: { email: lower, fullName: name.trim(), passwordHash },
+    });
+  } catch (e) {
+    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+      return NextResponse.json(
+        { error: "An account with that email already exists." },
+        { status: 409 }
+      );
+    }
+    console.error("Signup failed:", e);
     return NextResponse.json(
-      { error: "An account with that email already exists." },
-      { status: 409 }
+      { error: "Could not create account. Please try again." },
+      { status: 500 }
     );
   }
-
-  const passwordHash = await bcrypt.hash(password, 10);
-  await db.user.create({ data: { email: lower, fullName: name.trim(), passwordHash } });
 
   return NextResponse.json({ ok: true });
 }

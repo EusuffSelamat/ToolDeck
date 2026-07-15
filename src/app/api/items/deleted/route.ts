@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
-import type { ItemListItem } from "@/lib/items";
+import { RESTORE_WINDOW_MS, type ItemListItem } from "@/lib/items";
 
 // GET /api/items/deleted — recently deleted items (within 30-day window).
 export async function GET() {
@@ -10,17 +10,18 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const windowStart = new Date(Date.now() - RESTORE_WINDOW_MS);
 
   const items = await db.item.findMany({
     where: {
       isDeleted: true,
-      deletedAt: { gte: thirtyDaysAgo },
+      deletedAt: { gte: windowStart },
     },
     orderBy: { deletedAt: "desc" },
     include: {
       category: { select: { name: true } },
       currentLocation: { select: { name: true } },
+      homeLocation: { select: { name: true } },
       holder: { select: { fullName: true } },
     },
   });
@@ -39,9 +40,10 @@ export async function GET() {
     photoUrl: item.photoUrl,
     categoryName: item.category?.name ?? null,
     currentLocationName: item.currentLocation?.name ?? null,
-    homeLocationName: null,
+    homeLocationName: item.homeLocation?.name ?? null,
     holderName: item.holder?.fullName ?? null,
     updatedAt: item.updatedAt,
+    deletedAt: item.deletedAt,
   }));
 
   return NextResponse.json({ items: result });

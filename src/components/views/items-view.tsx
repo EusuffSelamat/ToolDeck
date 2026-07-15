@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Package, SlidersHorizontal, X } from "lucide-react";
+import { Search, Plus, Package, X } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
 
@@ -138,6 +138,7 @@ export function ItemsView() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by name, brand, code…"
+          aria-label="Search items"
           className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
           style={{ color: "var(--color-text-hi)" }}
         />
@@ -155,13 +156,6 @@ export function ItemsView() {
 
       {/* Filter chips */}
       <div className="-mx-5 mt-3 flex gap-2 overflow-x-auto px-5 pb-2">
-        <Chip
-          icon={<SlidersHorizontal size={12} />}
-          label="Filters"
-          active={false}
-          onClick={() => {}}
-          dropdown
-        />
         {STATUS_CHIPS.map((c) => (
           <Chip
             key={c.label}
@@ -256,14 +250,10 @@ function Chip({
   label,
   active,
   onClick,
-  icon,
-  dropdown,
 }: {
   label: string;
   active: boolean;
   onClick: () => void;
-  icon?: React.ReactNode;
-  dropdown?: boolean;
 }) {
   return (
     <button
@@ -276,7 +266,6 @@ function Chip({
         border: `1px solid ${active ? "var(--color-teal)" : "var(--color-border)"}`,
       }}
     >
-      {icon}
       {label}
     </button>
   );

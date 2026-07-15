@@ -3,6 +3,11 @@
  * max edge 1280px, JPEG quality 0.8, via canvas.
  * The same compressed image goes to both the vision API (M4) and Storage.
  *
+ * Uses createImageBitmap with imageOrientation: "from-image" to preserve
+ * EXIF orientation — critical for phone cameras that encode portrait shots
+ * as "rotate 90°" metadata. Falls back to Image + URL.createObjectURL for
+ * older browsers (Safari < 15).
+ *
  * Accepts a File (from <input type="file" capture>), returns a base64 JPEG string.
  */
 export async function compressImage(
@@ -10,37 +15,59 @@ export async function compressImage(
   maxEdge = 1280,
   quality = 0.8
 ): Promise<string> {
-  // Read file → HTMLImageElement
-  const dataUrl = await fileToDataUrl(file);
-  const img = await loadImage(dataUrl);
+  // Use createImageBitmap (respects EXIF) where available
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file, {
+        imageOrientation: "from-image",
+      });
+      try {
+        return drawAndExport(bitmap.width, bitmap.height, (ctx, w, h) =>
+          ctx.drawImage(bitmap, 0, 0, w, h)
+        );
+      } finally {
+        bitmap.close();
+      }
+    } catch {
+      // Fall through to legacy path
+    }
+  }
 
+  // Legacy path: Image + URL.createObjectURL (more memory-efficient than data URL)
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await loadImage(url);
+    return drawAndExport(img.naturalWidth, img.naturalHeight, (ctx, w, h) =>
+      ctx.drawImage(img, 0, 0, w, h)
+    );
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function drawAndExport(
+  srcW: number,
+  srcH: number,
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
+): string {
   // Calculate target dimensions (preserve aspect ratio, cap longest edge)
-  let { width, height } = img;
+  let width = srcW;
+  let height = srcH;
   const longestEdge = Math.max(width, height);
-  if (longestEdge > maxEdge) {
-    const scale = maxEdge / longestEdge;
+  if (longestEdge > 1280) {
+    const scale = 1280 / longestEdge;
     width = Math.round(width * scale);
     height = Math.round(height * scale);
   }
 
-  // Draw to canvas → export as JPEG
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
   if (!ctx) throw new Error("Canvas 2D context unavailable");
-  ctx.drawImage(img, 0, 0, width, height);
+  draw(ctx, width, height);
 
-  return canvas.toDataURL("image/jpeg", quality);
-}
-
-function fileToDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error("File read failed"));
-    reader.readAsDataURL(file);
-  });
+  return canvas.toDataURL("image/jpeg", 0.8);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

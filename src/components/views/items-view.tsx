@@ -2,9 +2,10 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Package, X } from "lucide-react";
+import { Search, Plus, Package, X, MapPin } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
+import { getLocationFilter, clearLocationFilter } from "@/lib/location-filter";
 
 type FilterChip = {
   key: string;
@@ -29,11 +30,25 @@ const QUICK_CHIPS: FilterChip[] = [
   { key: "lowStock", label: "Low stock", value: "true" },
 ];
 
+// Read the location filter once (before the component mounts)
+function getInitialLocationFilter(): { filters: FilterChip[]; name: string | null } {
+  if (typeof window === "undefined") return { filters: [], name: null };
+  const lf = getLocationFilter();
+  if (!lf) return { filters: [], name: null };
+  clearLocationFilter();
+  return {
+    filters: [{ key: "locationId", label: lf.locationName, value: lf.locationId }],
+    name: lf.locationName,
+  };
+}
+
 export function ItemsView() {
   const [, navigate] = useHashRoute();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [activeFilters, setActiveFilters] = useState<FilterChip[]>([]);
+  const initial = useMemo(() => getInitialLocationFilter(), []);
+  const [activeFilters, setActiveFilters] = useState<FilterChip[]>(initial.filters);
+  const [locationFilterName, setLocationFilterName] = useState<string | null>(initial.name);
 
   // Debounce search
   useEffect(() => {
@@ -100,6 +115,7 @@ export function ItemsView() {
   function clearFilters() {
     setActiveFilters([]);
     setSearch("");
+    setLocationFilterName(null);
   }
 
   const items = data?.items ?? [];
@@ -123,6 +139,33 @@ export function ItemsView() {
           <Plus size={16} /> Add
         </button>
       </div>
+
+      {/* Location filter banner (when navigated from Locations view) */}
+      {locationFilterName && (
+        <div
+          className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2.5"
+          style={{
+            background: "rgba(14,79,74,0.3)",
+            border: "1px solid rgba(25,227,196,0.25)",
+          }}
+        >
+          <MapPin size={14} style={{ color: "var(--color-teal)" }} />
+          <span className="flex-1 text-sm" style={{ color: "var(--color-text-hi)" }}>
+            {locationFilterName}
+          </span>
+          <button
+            onClick={() => {
+              setActiveFilters((prev) => prev.filter((f) => f.key !== "locationId"));
+              setLocationFilterName(null);
+            }}
+            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-[rgba(25,227,196,0.1)]"
+            style={{ color: "var(--color-text-mid)" }}
+            aria-label="Remove location filter"
+          >
+            <X size={13} />
+          </button>
+        </div>
+      )}
 
       {/* Search bar */}
       <div

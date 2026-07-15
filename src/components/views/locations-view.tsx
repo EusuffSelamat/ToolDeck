@@ -1,53 +1,420 @@
 "use client";
 
-import { MapPin, Plus } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  MapPin,
+  Plus,
+  Package,
+  Pencil,
+  Trash2,
+  X,
+  Building2,
+  DoorOpen,
+  Truck,
+  ArrowRight,
+  Loader2,
+} from "lucide-react";
+import { useHashRoute } from "@/hooks/use-hash-route";
+import { useToast } from "@/hooks/use-toast";
+import { setLocationFilter } from "@/lib/location-filter";
 
-/**
- * M1 Locations placeholder. Locations CRUD + category breakdown bars land in M2.
- */
+type LocationData = {
+  id: string;
+  name: string;
+  kind: string;
+  itemCount: number;
+  topCategories: Array<{ name: string; count: number }>;
+};
+
+const KIND_ICON: Record<string, typeof Building2> = {
+  site: Building2,
+  room: DoorOpen,
+  vehicle: Truck,
+};
+
 export function LocationsView() {
+  const [, navigate] = useHashRoute();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["locations"],
+    queryFn: async () => {
+      const res = await fetch("/api/locations");
+      if (!res.ok) throw new Error("Failed to load locations");
+      return res.json() as Promise<{ locations: LocationData[] }>;
+    },
+  });
+
+  const locations = data?.locations ?? [];
+
+  async function handleDelete(id: string, name: string) {
+    const res = await fetch(`/api/locations/${id}`, { method: "DELETE" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      toast({
+        title: "Cannot delete",
+        description: data.error ?? "Please try again.",
+      });
+      return;
+    }
+    qc.invalidateQueries({ queryKey: ["locations"] });
+    qc.invalidateQueries({ queryKey: ["meta"] });
+    toast({ title: "Location deleted", description: name });
+  }
+
+  function handleTapLocation(loc: LocationData) {
+    setLocationFilter(loc.id, loc.name);
+    navigate({ name: "items" });
+  }
+
   return (
     <div className="px-5 pt-4">
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Locations</h1>
-          <p className="micro-label mt-1">Where things live</p>
+          <p className="micro-label mt-1">
+            {locations.length} {locations.length === 1 ? "location" : "locations"}
+          </p>
         </div>
         <button
           type="button"
-          className="btn-ghost-teal flex h-9 w-9 items-center justify-center"
+          onClick={() => {
+            setEditingId(null);
+            setShowForm(true);
+          }}
+          className="btn-teal flex h-10 items-center gap-1.5 px-4 text-sm"
           aria-label="Add location"
         >
-          <Plus size={16} />
+          <Plus size={16} /> Add
         </button>
       </div>
 
-      <div className="glass-card flex flex-col items-center gap-4 px-6 py-12 text-center">
-        <span
-          className="flex h-14 w-14 items-center justify-center rounded-full"
-          style={{
-            border: "1px solid var(--color-border)",
-            color: "var(--color-text-low)",
-          }}
-        >
-          <MapPin size={24} />
-        </span>
-        <div>
-          <p className="text-base font-medium" style={{ color: "var(--color-text-hi)" }}>
-            No locations yet
-          </p>
-          <p className="mt-1 text-sm" style={{ color: "var(--color-text-mid)" }}>
-            Sites, rooms, and vehicles appear here as glowing nodes.
-          </p>
+      {isLoading ? (
+        <div className="space-y-3">
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              className="glass-card h-24 animate-pulse"
+              style={{ background: "rgba(10,26,26,0.3)" }}
+            />
+          ))}
         </div>
-      </div>
+      ) : locations.length === 0 ? (
+        <div className="glass-card flex flex-col items-center gap-4 px-6 py-12 text-center">
+          <span
+            className="flex h-14 w-14 items-center justify-center rounded-full"
+            style={{
+              border: "1px solid var(--color-border)",
+              color: "var(--color-text-low)",
+            }}
+          >
+            <MapPin size={24} />
+          </span>
+          <div>
+            <p className="text-base font-medium" style={{ color: "var(--color-text-hi)" }}>
+              No locations yet
+            </p>
+            <p className="mt-1 text-sm" style={{ color: "var(--color-text-mid)" }}>
+              Add sites, rooms, and vehicles to track where items live.
+            </p>
+          </div>
+          <button
+            onClick={() => setShowForm(true)}
+            className="btn-teal mt-1 flex h-10 items-center gap-2 px-5 text-sm"
+          >
+            <Plus size={15} /> Add location
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-3 pb-2">
+          {locations.map((loc) => {
+            const Icon = KIND_ICON[loc.kind] ?? MapPin;
+            return (
+              <div key={loc.id} className="glass-card overflow-hidden">
+                {/* Tap-to-filter target */}
+                <button
+                  onClick={() => handleTapLocation(loc)}
+                  className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[rgba(25,227,196,0.04)]"
+                >
+                  {/* Glowing node icon */}
+                  <span
+                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full"
+                    style={{
+                      border: "1px solid rgba(25,227,196,0.3)",
+                      background: "rgba(14,79,74,0.3)",
+                      color: "var(--color-teal)",
+                      boxShadow:
+                        loc.itemCount > 0
+                          ? "0 0 12px rgba(25,227,196,0.15)"
+                          : "none",
+                    }}
+                  >
+                    <Icon size={20} />
+                  </span>
 
-      <p
-        className="mt-6 text-center text-xs"
-        style={{ color: "var(--color-text-low)" }}
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className="truncate text-sm font-semibold"
+                      style={{ color: "var(--color-text-hi)" }}
+                    >
+                      {loc.name}
+                    </p>
+                    <p className="micro-label mt-0.5">
+                      {loc.kind} · {loc.itemCount}{" "}
+                      {loc.itemCount === 1 ? "item" : "items"}
+                    </p>
+                  </div>
+
+                  <ArrowRight
+                    size={16}
+                    style={{ color: "var(--color-text-low)" }}
+                  />
+                </button>
+
+                {/* Category breakdown bar */}
+                {loc.itemCount > 0 && loc.topCategories.length > 0 && (
+                  <div className="px-4 pb-3">
+                    <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: "rgba(6,17,17,0.6)" }}>
+                      {loc.topCategories.map((cat, i) => (
+                        <div
+                          key={cat.name}
+                          style={{
+                            width: `${(cat.count / loc.itemCount) * 100}%`,
+                            background:
+                              i === 0
+                                ? "var(--color-teal)"
+                                : i === 1
+                                ? "var(--color-teal-deep)"
+                                : i === 2
+                                ? "var(--color-gold)"
+                                : "var(--color-text-low)",
+                          }}
+                          title={`${cat.name}: ${cat.count}`}
+                        />
+                      ))}
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {loc.topCategories.slice(0, 3).map((cat) => (
+                        <span
+                          key={cat.name}
+                          className="text-[10px]"
+                          style={{ color: "var(--color-text-low)" }}
+                        >
+                          {cat.name} · {cat.count}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Edit/Delete actions */}
+                <div
+                  className="flex border-t"
+                  style={{ borderColor: "var(--color-border)" }}
+                >
+                  <button
+                    onClick={() => {
+                      setEditingId(loc.id);
+                      setShowForm(true);
+                    }}
+                    className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-[rgba(25,227,196,0.06)]"
+                    style={{ color: "var(--color-text-mid)" }}
+                  >
+                    <Pencil size={13} /> Edit
+                  </button>
+                  <div
+                    className="w-px"
+                    style={{ background: "var(--color-border)" }}
+                  />
+                  <button
+                    onClick={() => handleDelete(loc.id, loc.name)}
+                    className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-[rgba(224,86,107,0.08)]"
+                    style={{ color: "var(--color-danger)" }}
+                  >
+                    <Trash2 size={13} /> Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {showForm && (
+        <LocationForm
+          locationId={editingId}
+          existingName={editingId ? locations.find((l) => l.id === editingId)?.name ?? "" : ""}
+          existingKind={editingId ? locations.find((l) => l.id === editingId)?.kind ?? "site" : "site"}
+          onClose={() => {
+            setShowForm(false);
+            setEditingId(null);
+          }}
+          onSaved={() => {
+            setShowForm(false);
+            setEditingId(null);
+            qc.invalidateQueries({ queryKey: ["locations"] });
+            qc.invalidateQueries({ queryKey: ["meta"] });
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Location Add/Edit Form (modal) ──────────────────────────────────────
+function LocationForm({
+  locationId,
+  existingName,
+  existingKind,
+  onClose,
+  onSaved,
+}: {
+  locationId: string | null;
+  existingName: string;
+  existingKind: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [name, setName] = useState(existingName);
+  const [kind, setKind] = useState(existingKind);
+  const [busy, setBusy] = useState(false);
+  const isEdit = !!locationId;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setBusy(true);
+
+    const url = isEdit ? `/api/locations/${locationId}` : "/api/locations";
+    const method = isEdit ? "PATCH" : "POST";
+    const res = await fetch(url, {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: name.trim(), kind }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      toast({
+        title: isEdit ? "Update failed" : "Could not add location",
+        description: data.error ?? "Please try again.",
+      });
+      setBusy(false);
+      return;
+    }
+
+    toast({
+      title: isEdit ? "Location updated" : "Location added",
+      description: name.trim(),
+    });
+    onSaved();
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      style={{ background: "rgba(3,10,10,0.8)", backdropFilter: "blur(4px)" }}
+      onClick={onClose}
+    >
+      <div
+        className="glass-strong w-full max-w-md rounded-t-[var(--radius-card)] p-6 sm:rounded-[var(--radius-card)]"
+        onClick={(e) => e.stopPropagation()}
+        style={{ border: "1px solid var(--color-border)" }}
       >
-        Location management and the constellation panel arrive in Milestone 2.
-      </p>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-lg font-bold">
+            {isEdit ? "Edit location" : "Add location"}
+          </h2>
+          <button
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-full hover:bg-[rgba(25,227,196,0.08)]"
+            style={{ color: "var(--color-text-mid)" }}
+            aria-label="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Name */}
+          <label className="flex flex-col gap-1.5">
+            <span className="micro-label">Name</span>
+            <div
+              className="rounded-xl px-3.5 py-3 transition-colors focus-within:border-[rgba(25,227,196,0.5)]"
+              style={{
+                border: "1px solid var(--color-border)",
+                background: "rgba(6,17,17,0.6)",
+              }}
+            >
+              <input
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="e.g. Main Workshop, Van 3, Tool Room"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
+                style={{ color: "var(--color-text-hi)" }}
+                autoFocus
+                required
+              />
+            </div>
+          </label>
+
+          {/* Kind */}
+          <label className="flex flex-col gap-1.5">
+            <span className="micro-label">Type</span>
+            <div
+              className="flex gap-1 rounded-full p-1"
+              style={{ border: "1px solid var(--color-border)" }}
+            >
+              {(["site", "room", "vehicle"] as const).map((k) => {
+                const Icon = KIND_ICON[k];
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setKind(k)}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-full py-2 text-xs font-medium capitalize transition-all"
+                    style={{
+                      background: kind === k ? "var(--color-teal)" : "transparent",
+                      color: kind === k ? "#04211d" : "var(--color-text-mid)",
+                    }}
+                  >
+                    <Icon size={13} /> {k}
+                  </button>
+                );
+              })}
+            </div>
+          </label>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="btn-ghost-teal flex-1 h-11 text-sm"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={busy}
+              className="btn-teal flex-[2] h-11 flex items-center justify-center gap-2 text-sm"
+            >
+              {busy ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Plus size={16} />
+              )}
+              {isEdit ? "Save changes" : "Add location"}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

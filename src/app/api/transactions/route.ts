@@ -26,7 +26,8 @@ export async function GET(req: Request) {
   const personId = url.searchParams.get("personId");
   const itemId = url.searchParams.get("itemId");
   const limitParam = url.searchParams.get("limit");
-  const limit = Math.min(200, Math.max(1, parseInt(limitParam || "50", 10) || 50));
+  // For exports, allow up to 10000 transactions. Default 50 for UI.
+  const limit = Math.min(10000, Math.max(1, parseInt(limitParam || "50", 10) || 50));
 
   const where: Record<string, unknown> = {};
   if (action) where.action = action;

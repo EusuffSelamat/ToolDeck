@@ -2,11 +2,12 @@
 
 import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Package, X, MapPin, ChevronDown, ArrowRight, Download, FileText, Sheet } from "lucide-react";
+import { Search, Plus, Package, X, MapPin, ChevronDown, ArrowRight, Download, FileText, Sheet, FileSpreadsheet } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
 import { getLocationFilter, clearLocationFilter, type LocationFilterMode } from "@/lib/location-filter";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
+import { ExportDialog } from "@/components/export-dialog";
 
 type FilterChip = {
   key: string;
@@ -59,6 +60,7 @@ export function ItemsView() {
   const [locationFilterMode, setLocationFilterMode] = useState<LocationFilterMode>(initial.mode);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
 
   // Fetch locations for the picker (cached, shared with Locations view)
   const { data: locationsData } = useQuery({
@@ -219,9 +221,26 @@ export function ItemsView() {
                   onClick={() => setShowExportMenu(false)}
                 />
                 <div
-                  className="glass-strong absolute right-0 top-12 z-50 w-44 rounded-xl p-2"
+                  className="glass-strong absolute right-0 top-12 z-50 w-52 rounded-xl p-2"
                   style={{ border: "1px solid var(--color-border)" }}
                 >
+                  <button
+                    onClick={() => {
+                      setShowExportDialog(true);
+                      setShowExportMenu(false);
+                    }}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-sm transition-colors hover:bg-[rgba(25,227,196,0.06)]"
+                    style={{ color: "var(--color-text-hi)" }}
+                  >
+                    <FileSpreadsheet size={15} style={{ color: "var(--color-teal)" }} />
+                    <div>
+                      <div>Themed Excel</div>
+                      <div className="text-[10px]" style={{ color: "var(--color-text-low)" }}>
+                        4 sheets + photos
+                      </div>
+                    </div>
+                  </button>
+                  <div className="my-1 h-px" style={{ background: "var(--color-border)" }} />
                   <button
                     onClick={() => {
                       exportToCSV(items, "tooldeck-items");
@@ -231,7 +250,7 @@ export function ItemsView() {
                     style={{ color: "var(--color-text-hi)" }}
                   >
                     <FileText size={15} style={{ color: "var(--color-teal)" }} />
-                    CSV
+                    CSV (quick)
                   </button>
                   <button
                     onClick={() => {
@@ -242,7 +261,7 @@ export function ItemsView() {
                     style={{ color: "var(--color-text-hi)" }}
                   >
                     <Sheet size={15} style={{ color: "var(--color-teal)" }} />
-                    Excel (.xlsx)
+                    Excel (plain)
                   </button>
                 </div>
               </>
@@ -483,6 +502,28 @@ export function ItemsView() {
             navigate({ name: "locations" });
           }}
           onClose={() => setShowLocationPicker(false)}
+        />
+      )}
+
+      {/* Export dialog */}
+      {showExportDialog && (
+        <ExportDialog
+          itemCount={items.length}
+          filterDescription={(() => {
+            if (!hasAnyFilter) return "All items";
+            const parts: string[] = [];
+            if (debouncedSearch) parts.push(`"${debouncedSearch}"`);
+            for (const f of activeFilters) {
+              if (f.key === "status") parts.push(f.label);
+              else if (f.key === "trackingType") parts.push(f.label);
+              else if (f.key === "holder") parts.push("my items");
+              else if (f.key === "lowStock") parts.push("low stock");
+              else if (f.key === "locationId" || f.key === "homeLocationId") parts.push(locationFilterName ?? f.label);
+            }
+            return parts.length > 0 ? parts.join(" · ") : "All items";
+          })()}
+          filterQueryString={queryString}
+          onClose={() => setShowExportDialog(false)}
         />
       )}
     </div>

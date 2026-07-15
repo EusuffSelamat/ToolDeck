@@ -437,3 +437,41 @@ Stage Summary:
 - Delete is blocked when child locations exist — prevents orphaning.
 - The `itemCount` on location cards is recursive (includes children); the category breakdown bar uses `directItemCount` (excludes children) so it reflects what's physically at that exact location.
 - Known limitation: `Location.name` is globally unique (not composite `[parentLocationId, name]`). This means you can't have "Van 3" at both Tuas AND Changi. Documented for a future migration if needed.
+
+---
+Task ID: THEMED-EXPORT
+Agent: GLM (main)
+Task: Build a themed Excel export feature that generates a 4-sheet workbook matching the §10 dark teal glass aesthetic, with grouped data, color-coded cells, branded header, and photo links.
+
+Work Log:
+- Installed `exceljs` for full-featured Excel generation (cell styling, merged cells, multiple sheets, hyperlinks). Dynamically imported for code-splitting — doesn't bloat the initial bundle.
+- Updated items API to return additional fields needed for export: `serialNo`, `createdByName`, `createdAt`, `updatedByName` (from latest transaction's person), `currentLocationParentName`, `homeLocationParentName`.
+- Updated transactions API to support up to 10,000 results (for the Activity Log sheet — was capped at 200).
+- Created `src/lib/themed-export.ts` — the core export engine:
+  • **Sheet 1: Dashboard Summary** — branded "TOOLDECK" header (Space Grotesk 28px teal), export date, scope description, 6 stat pills (Total/Available/Checked Out/Needs Service/Low Stock/Overdue) in glass cards with teal/gold/magenta/red numerals, category breakdown with visual bars.
+  • **Sheet 2: Items** — grouped by current location with indented location header rows ("📍 Location Name · N items"). 23 columns: Photo (clickable link), Code, Name, Brand, Model, Serial, Category, Type, Status (color-coded), Condition (color-coded), Qty, Min, Home Location, Home Parent, Current Location, Current Parent, Holder, Expected Return, Created, Created By, Updated, Updated By, Notes. Alternating row stripes, hairline borders, all on dark background.
+  • **Sheet 3: Locations Summary** — all locations with kind, parent, recursive item count, direct count, home count, away count, children count. Roots first, children indented.
+  • **Sheet 4: Activity Log** — ALL transactions (up to 10,000) with date, time, action (color-coded by type), item name, code, person, holder, from→to, qty delta, note.
+  • Full §10 dark theme applied to every cell: bg-0 (#030A0A) background, glass fills, teal headers, hairline borders, Space Grotesk for numerals, Inter for text. Grid lines hidden. Tab colors set to teal.
+  • Status/condition cells color-coded: available=teal, checked_out=gold, needs_service=magenta, out_of_order=red — with appropriate text contrast.
+- **Photos**: ExcelJS browser image embedding is unreliable ("Unsupported media" error from `writeBuffer`). Switched to **clickable hyperlinks** — each photo cell contains "📷 View" as a teal underlined link to the photo URL. Zero file size impact, always works, user can click to view the photo in a browser. The link uses the full URL so it works when the file is opened on any machine with access to the TOOLDECK server.
+- Created `src/components/export-dialog.tsx` — a modal that asks the user to choose:
+  • **Current filter** — exports only the items matching the current search + filter chips (shows the filter description + item count)
+  • **All items** — exports every active item in the database
+  The dialog shows what's included (4 sheets, photo links, color coding) and has a "Generating…" spinner during export.
+- Updated the Items view export dropdown — now has 3 options: "Themed Excel" (opens the dialog), "CSV (quick)", "Excel (plain)". The themed option is at the top with a description "4 sheets + photos".
+- Filename format: `tooldeckitems.[filtername].[date].xlsx` — e.g., `tooldeckitems.all.2026-07-15.xlsx` or `tooldeckitems.available.2026-07-15.xlsx`.
+- The export fetches all data in parallel: items (with full details), locations, transactions (limit=10000), stats — then generates the workbook client-side and downloads via Blob URL.
+
+VERIFICATION:
+- ✅ Export dialog opens with "Current filter" vs "All items" choice
+- ✅ Export completes successfully — dialog closes, no console errors
+- ✅ 4 sheets generated: Summary, Items, Locations, Activity
+- ✅ Full dark teal theme applied (§10 colours)
+- ✅ Status/condition cells color-coded
+- ✅ Items grouped by location
+- ✅ Photos included as clickable links
+- ✅ Filename follows the `tooldeckitems.[filtername].[date].xlsx` pattern
+- ✅ Lint clean
+
+Architecture note: ExcelJS is dynamically imported (`await import("exceljs")`) so the ~1.5MB library only loads when the user clicks "Themed Excel" — the initial page bundle is unaffected.

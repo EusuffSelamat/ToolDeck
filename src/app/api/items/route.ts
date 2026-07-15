@@ -55,8 +55,18 @@ export async function GET(req: Request) {
   }
   if (categoryId) where.categoryId = categoryId;
   if (status) where.status = status;
-  if (locationId) where.currentLocationId = locationId;
-  if (homeLocationId) where.homeLocationId = homeLocationId;
+  // Location filters are recursive: tapping "Tuas" shows items at Tuas
+  // AND items in child locations (e.g. the Company Van parked at Tuas).
+  if (locationId) {
+    const { getLocationAndDescendants } = await import("@/lib/locations");
+    const locationIds = await getLocationAndDescendants(locationId);
+    where.currentLocationId = { in: Array.from(locationIds) };
+  }
+  if (homeLocationId) {
+    const { getLocationAndDescendants } = await import("@/lib/locations");
+    const locationIds = await getLocationAndDescendants(homeLocationId);
+    where.homeLocationId = { in: Array.from(locationIds) };
+  }
   // lowStock implies stock type — but don't overwrite an explicit trackingType
   if (trackingType) {
     where.trackingType = trackingType;

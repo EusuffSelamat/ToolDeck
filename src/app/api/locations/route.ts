@@ -3,11 +3,15 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
 import { z } from "zod";
+import { getDescendantLocationIds } from "@/lib/locations";
 
 // GET /api/locations — list all locations with:
-//   - itemCount: items currently at this location
+//   - itemCount: items currently at this location (recursive — includes children)
+//   - directItemCount: items directly at this location (excludes children)
 //   - homeItemCount: items whose home is this location
 //   - awayItems: items whose home is here but are currently elsewhere
+//   - parentLocationId + parentName: for hierarchy rendering
+//   - childrenCount: number of child locations
 export async function GET() {
   const session = await requireAuth();
   if (!session) {
@@ -17,6 +21,8 @@ export async function GET() {
   const locations = await db.location.findMany({
     orderBy: { name: "asc" },
     include: {
+      parent: { select: { name: true } },
+      _count: { select: { children: true } },
       itemsCurrent: {
         where: { isDeleted: false },
         select: {
@@ -44,9 +50,29 @@ export async function GET() {
     },
   });
 
+  // Pre-compute descendant sets for all locations (for recursive item counts)
+  const descendantMap = new Map<string, Set<string>>();
+  for (const loc of locations) {
+    descendantMap.set(loc.id, await getDescendantLocationIds(loc.id));
+  }
+
+  // Build a map of all current item location IDs → items, for recursive counting
+  const itemsByLocation = new Map<string, typeof locations[0]["itemsCurrent"]>();
+  for (const loc of locations) {
+    itemsByLocation.set(loc.id, loc.itemsCurrent);
+  }
+
   const result = locations.map((loc) => {
     const currentItems = loc.itemsCurrent;
     const homeItems = loc.itemsHome;
+    const descendants = descendantMap.get(loc.id) ?? new Set<string>();
+
+    // Recursive item count: items directly here + items in all descendants
+    let recursiveItemCount = currentItems.length;
+    for (const descId of descendants) {
+      const descItems = itemsByLocation.get(descId);
+      if (descItems) recursiveItemCount += descItems.length;
+    }
 
     // Items whose home is here but are currently elsewhere (or checked out)
     const awayItems = homeItems.filter(
@@ -71,7 +97,7 @@ export async function GET() {
       .map(([location, count]) => ({ location, count }))
       .sort((a, b) => b.count - a.count);
 
-    // Category breakdown for items currently here
+    // Category breakdown for items directly here
     const categoryBreakdown: Record<string, number> = {};
     for (const item of currentItems) {
       const cat = item.category?.name ?? "Uncategorised";
@@ -87,7 +113,11 @@ export async function GET() {
       id: loc.id,
       name: loc.name,
       kind: loc.kind,
-      itemCount: currentItems.length,
+      parentLocationId: loc.parentLocationId,
+      parentName: loc.parent?.name ?? null,
+      childrenCount: loc._count.children,
+      itemCount: recursiveItemCount,
+      directItemCount: currentItems.length,
       homeItemCount: homeItems.length,
       awayCount: awayItems.length,
       awayBreakdown,
@@ -101,6 +131,7 @@ export async function GET() {
 const createSchema = z.object({
   name: z.string().min(1).max(100),
   kind: z.enum(["site", "room", "vehicle"]).default("site"),
+  parentLocationId: z.string().nullable().optional(),
 });
 
 // POST /api/locations — create a new location.
@@ -119,11 +150,15 @@ export async function POST(req: Request) {
     );
   }
 
-  const { name, kind } = parsed.data;
+  const { name, kind, parentLocationId } = parsed.data;
 
   try {
     const location = await db.location.create({
-      data: { name: name.trim(), kind },
+      data: {
+        name: name.trim(),
+        kind,
+        parentLocationId: parentLocationId || null,
+      },
     });
     return NextResponse.json({ location }, { status: 201 });
   } catch (e) {

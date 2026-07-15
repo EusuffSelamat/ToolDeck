@@ -34,16 +34,24 @@ model User {
 
 // ── Locations (§5) ──────────────────────────────────────────────────────
 // kind: 'site' | 'room' | 'vehicle' (validated in API layer)
+// parentLocationId: supports a location hierarchy — e.g. a Company Van
+// (vehicle) can be "at" Tuas (site), and items can be "in" the van.
 model Location {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  kind      String   @default("site")
-  createdAt DateTime @default(now())
+  id              String   @id @default(cuid())
+  name            String   @unique
+  kind            String   @default("site")
+  parentLocationId String? // self-relation: where this location IS
+  createdAt       DateTime @default(now())
+
+  parent          Location?  @relation("LocationParent", fields: [parentLocationId], references: [id])
+  children        Location[] @relation("LocationParent")
 
   itemsHome    Item[]        @relation("HomeLocation")
   itemsCurrent Item[]        @relation("CurrentLocation")
   txFrom       Transaction[] @relation("TxFromLocation")
   txTo         Transaction[] @relation("TxToLocation")
+
+  @@index([parentLocationId])
 }
 
 // ── Categories (§5) ─────────────────────────────────────────────────────

@@ -25,7 +25,11 @@ type LocationData = {
   id: string;
   name: string;
   kind: string;
+  parentLocationId: string | null;
+  parentName: string | null;
+  childrenCount: number;
   itemCount: number;
+  directItemCount: number;
   homeItemCount: number;
   awayCount: number;
   awayBreakdown: Array<{ location: string; count: number }>;
@@ -143,169 +147,53 @@ export function LocationsView() {
         </div>
       ) : (
         <div className="space-y-3 pb-2">
-          {locations.map((loc) => {
-            const Icon = KIND_ICON[loc.kind] ?? MapPin;
-            return (
-              <div key={loc.id} className="glass-card overflow-hidden">
-                {/* Main tap target — "currently here" */}
-                <button
-                  onClick={() => handleTapLocation(loc)}
-                  className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[rgba(25,227,196,0.04)]"
-                >
-                  {/* Glowing node icon */}
-                  <span
-                    className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full"
-                    style={{
-                      border: "1px solid rgba(25,227,196,0.3)",
-                      background: "rgba(14,79,74,0.3)",
-                      color: "var(--color-teal)",
-                      boxShadow:
-                        loc.itemCount > 0
-                          ? "0 0 12px rgba(25,227,196,0.15)"
-                          : "none",
-                    }}
-                  >
-                    <Icon size={20} />
-                  </span>
+          {(() => {
+            // Build a tree: roots (parentLocationId === null) + their children
+            const roots = locations.filter((l) => !l.parentLocationId);
+            const childrenByParent = new Map<string, LocationData[]>();
+            for (const loc of locations) {
+              if (loc.parentLocationId) {
+                const arr = childrenByParent.get(loc.parentLocationId) ?? [];
+                arr.push(loc);
+                childrenByParent.set(loc.parentLocationId, arr);
+              }
+            }
 
-                  <div className="min-w-0 flex-1">
-                    <p
-                      className="truncate text-sm font-semibold"
-                      style={{ color: "var(--color-text-hi)" }}
-                    >
-                      {loc.name}
-                    </p>
-                    <p className="micro-label mt-0.5">
-                      {loc.kind}
-                    </p>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-0.5">
-                    <span
-                      className="font-display text-lg font-semibold"
-                      style={{ color: "var(--color-teal)" }}
-                    >
-                      {loc.itemCount}
-                    </span>
-                    <span className="micro-label">here now</span>
-                  </div>
-                </button>
-
-                {/* Home + away tracking section */}
-                {loc.homeItemCount > 0 && (
-                  <div
-                    className="border-t px-4 py-3"
-                    style={{ borderColor: "var(--color-border)" }}
-                  >
-                    <button
-                      onClick={() => handleTapHome(loc)}
-                      className="flex w-full items-center gap-2 text-left transition-colors hover:text-[var(--color-teal)]"
-                    >
-                      <Home size={13} style={{ color: "var(--color-gold)" }} />
-                      <span
-                        className="text-xs"
-                        style={{ color: "var(--color-text-mid)" }}
-                      >
-                        {loc.homeItemCount} {loc.homeItemCount === 1 ? "item" : "items"} call this home
-                      </span>
-                      {loc.awayCount > 0 && (
-                        <span
-                          className="ml-auto flex items-center gap-1 text-[10px] font-semibold"
-                          style={{ color: "var(--color-gold)" }}
-                        >
-                          <LogOut size={10} /> {loc.awayCount} away
-                        </span>
-                      )}
-                      <ArrowRight size={12} style={{ color: "var(--color-text-low)" }} />
-                    </button>
-
-                    {/* Away breakdown — where are the items? */}
-                    {loc.awayCount > 0 && loc.awayBreakdown.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {loc.awayBreakdown.slice(0, 4).map((away) => (
-                          <span
-                            key={away.location}
-                            className="rounded-full px-2 py-0.5 text-[10px]"
-                            style={{
-                              background: "rgba(201,160,99,0.1)",
-                              color: "var(--color-gold)",
-                              border: "1px solid rgba(201,160,99,0.2)",
-                            }}
-                          >
-                            {away.location} · {away.count}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* Category breakdown bar (for items currently here) */}
-                {loc.itemCount > 0 && loc.topCategories.length > 0 && (
-                  <div className="px-4 pb-3">
-                    <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: "rgba(6,17,17,0.6)" }}>
-                      {loc.topCategories.map((cat, i) => (
-                        <div
-                          key={cat.name}
-                          style={{
-                            width: `${(cat.count / loc.itemCount) * 100}%`,
-                            background:
-                              i === 0
-                                ? "var(--color-teal)"
-                                : i === 1
-                                ? "var(--color-teal-deep)"
-                                : i === 2
-                                ? "var(--color-gold)"
-                                : "var(--color-text-low)",
-                          }}
-                          title={`${cat.name}: ${cat.count}`}
-                        />
-                      ))}
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                      {loc.topCategories.slice(0, 3).map((cat) => (
-                        <span
-                          key={cat.name}
-                          className="text-[10px]"
-                          style={{ color: "var(--color-text-low)" }}
-                        >
-                          {cat.name} · {cat.count}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Edit/Delete actions */}
-                <div
-                  className="flex border-t"
-                  style={{ borderColor: "var(--color-border)" }}
-                >
-                  <button
-                    onClick={() => {
+            return roots.map((loc) => {
+              const children = childrenByParent.get(loc.id) ?? [];
+              return (
+                <div key={loc.id} className="space-y-2">
+                  <LocationCard
+                    loc={loc}
+                    onTapLocation={handleTapLocation}
+                    onTapHome={handleTapHome}
+                    onEdit={() => {
                       setEditingId(loc.id);
                       setShowForm(true);
                     }}
-                    className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-[rgba(25,227,196,0.06)]"
-                    style={{ color: "var(--color-text-mid)" }}
-                  >
-                    <Pencil size={13} /> Edit
-                  </button>
-                  <div
-                    className="w-px"
-                    style={{ background: "var(--color-border)" }}
+                    onDelete={handleDelete}
                   />
-                  <button
-                    onClick={() => handleDelete(loc.id, loc.name)}
-                    className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-[rgba(224,86,107,0.08)]"
-                    style={{ color: "var(--color-danger)" }}
-                  >
-                    <Trash2 size={13} /> Delete
-                  </button>
+                  {children.length > 0 && (
+                    <div className="ml-4 space-y-2 border-l pl-3" style={{ borderColor: "var(--color-border)" }}>
+                      {children.map((child) => (
+                        <LocationCard
+                          key={child.id}
+                          loc={child}
+                          onTapLocation={handleTapLocation}
+                          onTapHome={handleTapHome}
+                          onEdit={() => {
+                            setEditingId(child.id);
+                            setShowForm(true);
+                          }}
+                          onDelete={handleDelete}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
       )}
 
@@ -314,6 +202,8 @@ export function LocationsView() {
           locationId={editingId}
           existingName={editingId ? locations.find((l) => l.id === editingId)?.name ?? "" : ""}
           existingKind={editingId ? locations.find((l) => l.id === editingId)?.kind ?? "site" : "site"}
+          existingParentId={editingId ? locations.find((l) => l.id === editingId)?.parentLocationId ?? null : null}
+          allLocations={locations}
           onClose={() => {
             setShowForm(false);
             setEditingId(null);
@@ -335,20 +225,41 @@ function LocationForm({
   locationId,
   existingName,
   existingKind,
+  existingParentId,
+  allLocations,
   onClose,
   onSaved,
 }: {
   locationId: string | null;
   existingName: string;
   existingKind: string;
+  existingParentId: string | null;
+  allLocations: LocationData[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { toast } = useToast();
   const [name, setName] = useState(existingName);
   const [kind, setKind] = useState(existingKind);
+  const [parentLocationId, setParentLocationId] = useState(existingParentId ?? "");
   const [busy, setBusy] = useState(false);
   const isEdit = !!locationId;
+
+  // Exclude self + descendants from the parent picker (prevents cycles client-side)
+  const eligibleParents = allLocations.filter((l) => {
+    if (!locationId) return true;
+    if (l.id === locationId) return false;
+    // Exclude descendants — walk up each location's parent chain
+    let cursor: LocationData | undefined = l;
+    while (cursor) {
+      if (cursor.parentLocationId === locationId) return false;
+      if (cursor.id === locationId) return false;
+      cursor = cursor.parentLocationId
+        ? allLocations.find((x) => x.id === cursor!.parentLocationId)
+        : undefined;
+    }
+    return true;
+  });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -360,7 +271,7 @@ function LocationForm({
     const res = await fetch(url, {
       method,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim(), kind }),
+      body: JSON.stringify({ name: name.trim(), kind, parentLocationId: parentLocationId || null }),
     });
 
     if (!res.ok) {
@@ -456,6 +367,37 @@ function LocationForm({
             </div>
           </label>
 
+          {/* Parent location (for nesting — e.g. a van "at" Tuas) */}
+          <label className="flex flex-col gap-1.5">
+            <span className="micro-label">Parent location (optional)</span>
+            <div
+              className="rounded-xl px-3.5 py-3 transition-colors focus-within:border-[rgba(25,227,196,0.5)]"
+              style={{
+                border: "1px solid var(--color-border)",
+                background: "rgba(6,17,17,0.6)",
+              }}
+            >
+              <select
+                value={parentLocationId}
+                onChange={(e) => setParentLocationId(e.target.value)}
+                className="w-full bg-transparent text-sm outline-none"
+                style={{ color: "var(--color-text-hi)" }}
+              >
+                <option value="" style={{ background: "var(--color-bg-1)" }}>
+                  None — top-level
+                </option>
+                {eligibleParents.map((l) => (
+                  <option key={l.id} value={l.id} style={{ background: "var(--color-bg-1)" }}>
+                    {l.name}{l.parentName ? ` (at ${l.parentName})` : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <span className="text-[10px]" style={{ color: "var(--color-text-low)" }}>
+              For vehicles or rooms that are inside a site
+            </span>
+          </label>
+
           {/* Actions */}
           <div className="flex gap-3 pt-2">
             <button
@@ -479,6 +421,164 @@ function LocationForm({
             </button>
           </div>
         </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Location Card (extracted for hierarchy rendering) ───────────────────
+function LocationCard({
+  loc,
+  onTapLocation,
+  onTapHome,
+  onEdit,
+  onDelete,
+}: {
+  loc: LocationData;
+  onTapLocation: (loc: LocationData) => void;
+  onTapHome: (loc: LocationData) => void;
+  onEdit: () => void;
+  onDelete: (id: string, name: string) => void;
+}) {
+  const Icon = KIND_ICON[loc.kind] ?? MapPin;
+  return (
+    <div className="glass-card overflow-hidden">
+      {/* Main tap target — "currently here" */}
+      <button
+        onClick={() => onTapLocation(loc)}
+        className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[rgba(25,227,196,0.04)]"
+      >
+        <span
+          className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full"
+          style={{
+            border: "1px solid rgba(25,227,196,0.3)",
+            background: "rgba(14,79,74,0.3)",
+            color: "var(--color-teal)",
+            boxShadow: loc.itemCount > 0 ? "0 0 12px rgba(25,227,196,0.15)" : "none",
+          }}
+        >
+          <Icon size={20} />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <p
+            className="truncate text-sm font-semibold"
+            style={{ color: "var(--color-text-hi)" }}
+          >
+            {loc.name}
+          </p>
+          <p className="micro-label mt-0.5">
+            {loc.kind}
+            {loc.parentName ? ` · at ${loc.parentName}` : ""}
+            {loc.childrenCount > 0 ? ` · ${loc.childrenCount} child${loc.childrenCount === 1 ? "" : "ren"}` : ""}
+          </p>
+        </div>
+
+        <div className="flex flex-col items-end gap-0.5">
+          <span
+            className="font-display text-lg font-semibold"
+            style={{ color: "var(--color-teal)" }}
+          >
+            {loc.itemCount}
+          </span>
+          <span className="micro-label">here now</span>
+        </div>
+      </button>
+
+      {/* Home + away tracking section */}
+      {loc.homeItemCount > 0 && (
+        <div
+          className="border-t px-4 py-3"
+          style={{ borderColor: "var(--color-border)" }}
+        >
+          <button
+            onClick={() => onTapHome(loc)}
+            className="flex w-full items-center gap-2 text-left transition-colors hover:text-[var(--color-teal)]"
+          >
+            <Home size={13} style={{ color: "var(--color-gold)" }} />
+            <span className="text-xs" style={{ color: "var(--color-text-mid)" }}>
+              {loc.homeItemCount} {loc.homeItemCount === 1 ? "item" : "items"} call this home
+            </span>
+            {loc.awayCount > 0 && (
+              <span
+                className="ml-auto flex items-center gap-1 text-[10px] font-semibold"
+                style={{ color: "var(--color-gold)" }}
+              >
+                <LogOut size={10} /> {loc.awayCount} away
+              </span>
+            )}
+            <ArrowRight size={12} style={{ color: "var(--color-text-low)" }} />
+          </button>
+
+          {loc.awayCount > 0 && loc.awayBreakdown.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {loc.awayBreakdown.slice(0, 4).map((away) => (
+                <span
+                  key={away.location}
+                  className="rounded-full px-2 py-0.5 text-[10px]"
+                  style={{
+                    background: "rgba(201,160,99,0.1)",
+                    color: "var(--color-gold)",
+                    border: "1px solid rgba(201,160,99,0.2)",
+                  }}
+                >
+                  {away.location} · {away.count}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Category breakdown bar */}
+      {loc.directItemCount > 0 && loc.topCategories.length > 0 && (
+        <div className="px-4 pb-3">
+          <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: "rgba(6,17,17,0.6)" }}>
+            {loc.topCategories.map((cat, i) => (
+              <div
+                key={cat.name}
+                style={{
+                  width: `${(cat.count / loc.directItemCount) * 100}%`,
+                  background:
+                    i === 0
+                      ? "var(--color-teal)"
+                      : i === 1
+                      ? "var(--color-teal-deep)"
+                      : i === 2
+                      ? "var(--color-gold)"
+                      : "var(--color-text-low)",
+                }}
+                title={`${cat.name}: ${cat.count}`}
+              />
+            ))}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+            {loc.topCategories.slice(0, 3).map((cat) => (
+              <span key={cat.name} className="text-[10px]" style={{ color: "var(--color-text-low)" }}>
+                {cat.name} · {cat.count}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Edit/Delete actions */}
+      <div className="flex border-t" style={{ borderColor: "var(--color-border)" }}>
+        <button
+          onClick={onEdit}
+          className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-[rgba(25,227,196,0.06)]"
+          style={{ color: "var(--color-text-mid)" }}
+        >
+          <Pencil size={13} /> Edit
+        </button>
+        <div className="w-px" style={{ background: "var(--color-border)" }} />
+        <button
+          onClick={() => onDelete(loc.id, loc.name)}
+          className="flex flex-1 items-center justify-center gap-1.5 py-2.5 text-xs font-medium transition-colors hover:bg-[rgba(224,86,107,0.08)]"
+          style={{ color: "var(--color-danger)" }}
+        >
+          <Trash2 size={13} /> Delete
+        </button>
       </div>
     </div>
   );

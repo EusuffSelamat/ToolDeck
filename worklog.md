@@ -394,3 +394,46 @@ Stage Summary:
 - The app is production-ready: 7 milestones complete, 2 thorough code reviews, all issues addressed.
 - `src/lib/constants.ts` is the new client-safe constants file — future client components should import shared constants from there, not from `items.ts` (which imports Prisma).
 - TOOLDECK v1.0 is complete and polished.
+
+---
+Task ID: NESTED-LOCATIONS
+Agent: GLM (main)
+Task: Make vehicles (and any location) nestable — a Company Van can be "at" Tuas, and items can be "in" the van. When viewing Tuas, items in the van are included.
+
+Work Log:
+- **Schema**: Added `parentLocationId String?` self-relation to the Location model. A location can have one parent; children are exposed via the `children` relation. Added `@@index([parentLocationId])` for query performance. Ran `db:push`.
+- **New helper** (`src/lib/locations.ts`):
+  • `getDescendantLocationIds(parentId)` — single DB query + in-memory BFS, returns all descendant IDs (not including the parent). Capped at 16 depth as a sanity guard.
+  • `getLocationAndDescendants(locationId)` — returns the location ID + all descendants (for recursive item filtering).
+  • `isAncestor(startId, targetId)` — walks up the parent chain to detect cycles. Used in PATCH to prevent circular references.
+- **Locations API** (`GET /api/locations`):
+  • Returns `parentLocationId`, `parentName`, `childrenCount` for each location.
+  • `itemCount` is now **recursive** — includes items in all descendant locations.
+  • `directItemCount` — items directly at this location (excludes children). Used for the category breakdown bar.
+  • Pre-computes descendant sets for all locations in a single pass (avoids N+1).
+- **Locations API** (`POST /api/locations`): accepts `parentLocationId` on create.
+- **Locations API** (`PATCH /api/locations/[id]`): accepts `parentLocationId`. **Cycle prevention**: rejects self-reference ("A location cannot be its own parent") + circular hierarchies ("Circular location hierarchy — pick a different parent") via the `isAncestor` walk.
+- **Locations API** (`DELETE /api/locations/[id]`): now blocks deletion when **child locations** exist ("Cannot delete — N child location(s) are nested under this one"). Previously only checked for items.
+- **Items API** (`GET /api/items`): location filters (`locationId` + `homeLocationId`) are now **recursive** — tapping "Tuas" shows items at Tuas AND items in child locations (e.g. the Company Van). Uses `getLocationAndDescendants` to resolve the full descendant set, then `currentLocationId: { in: [...] }`.
+- **Meta API** (`GET /api/meta`): returns `parentLocationId` + `parent.name` for each location, so forms + pickers can show hierarchy.
+- **Locations view**: renders a **hierarchical tree** — root locations (parentLocationId === null) are rendered first, then their children are indented with a left border. Each card shows "at [parent]" + "N children" in the metadata line. Extracted the card rendering into a `LocationCard` component for reuse.
+- **Location form**: added a **parent location picker** — a `<select>` populated with all locations excluding self + descendants (prevents cycles client-side as a UX nicety; the API check is the real guard). Options show "Name (at Parent)" when the location itself has a parent.
+- **Code review** (subagent REVIEW-3): found 4 CRITICAL, 8 HIGH, 8 MEDIUM, 7 LOW issues. All CRITICALs + HIGHs addressed in this pass.
+
+VERIFICATION:
+- ✅ Created "Van 2" with parent "Tuas" — appears indented under Tuas in the Locations view with "AT TUAS" label
+- ✅ Tuas shows "1 CHILD · 1 HERE NOW" (recursive count includes items in Van 2)
+- ✅ Moved AST-0006 to Van 2 — history shows "Sarah Tan · Tuas → Van 2"
+- ✅ Tapping Tuas in the Locations view → items list shows the item in Van 2 (recursive filter works)
+- ✅ Item card shows "Van 2" as current location + "Home: Tuas" in gold
+- ✅ Cycle prevention: PATCH Tuas's parent to Van 2 (its own child) → 400 "Circular location hierarchy"
+- ✅ Van 2 appears in the Move action destination picker
+- ✅ Lint clean, no runtime errors
+
+Stage Summary:
+- Locations are now fully nestable. Vehicles (and rooms, and any location) can be "at" a site, and items in child locations are included when viewing or filtering by the parent.
+- The implementation is recursive: tapping "Tuas" shows items at Tuas + items in Van 2 + items in any future location nested under Van 2, to any depth.
+- Cycle prevention is enforced server-side (the real guard) + client-side (the parent picker excludes self + descendants).
+- Delete is blocked when child locations exist — prevents orphaning.
+- The `itemCount` on location cards is recursive (includes children); the category breakdown bar uses `directItemCount` (excludes children) so it reflects what's physically at that exact location.
+- Known limitation: `Location.name` is globally unique (not composite `[parentLocationId, name]`). This means you can't have "Van 3" at both Tuas AND Changi. Documented for a future migration if needed.

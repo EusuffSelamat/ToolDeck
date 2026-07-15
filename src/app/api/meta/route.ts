@@ -19,7 +19,13 @@ export async function GET() {
     }),
     db.location.findMany({
       orderBy: { name: "asc" },
-      select: { id: true, name: true, kind: true },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        parentLocationId: true,
+        parent: { select: { name: true } },
+      },
     }),
   ]);
 

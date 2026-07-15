@@ -17,11 +17,16 @@ export const authOptions: NextAuthOptions = {
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
         const email = credentials.email.toLowerCase().trim();
-        const user = await db.user.findUnique({ where: { email } });
-        if (!user) return null;
-        const ok = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!ok) return null;
-        return { id: user.id, name: user.fullName, email: user.email };
+        try {
+          const user = await db.user.findUnique({ where: { email } });
+          if (!user) return null;
+          const ok = await bcrypt.compare(credentials.password, user.passwordHash);
+          if (!ok) return null;
+          return { id: user.id, name: user.fullName, email: user.email };
+        } catch (e) {
+          console.error("Auth authorize error:", e);
+          return null;
+        }
       },
     }),
   ],

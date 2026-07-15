@@ -55,7 +55,11 @@ export function AuthScreen() {
         return;
       }
 
-      // Session refresh is handled by useSession in the parent.
+      // Sign-in succeeded — the session cookie is now set.
+      // Force a full page reload so useSession picks up the new session
+      // immediately (it doesn't auto-poll, so without this the spinner
+      // would spin forever waiting for the session to update).
+      window.location.reload();
     } catch {
       setError("Something went wrong. Please try again.");
       setBusy(false);

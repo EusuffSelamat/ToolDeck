@@ -2,6 +2,12 @@
 
 import { useQuery } from "@tanstack/react-query";
 import {
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
+} from "recharts";
+import {
   Boxes,
   CheckCircle2,
   TrendingUp,
@@ -10,9 +16,13 @@ import {
   Clock,
   ArrowRight,
   Calendar,
+  MapPin,
+  Building2,
+  DoorOpen,
+  Truck,
 } from "lucide-react";
-import { useHashRoute } from "@/hooks/use-hash-route";
-import { StatusPill } from "@/components/status-pill";
+import { useHashRoute, type Route } from "@/hooks/use-hash-route";
+import { setLocationFilter } from "@/lib/location-filter";
 
 type Stats = {
   totalItems: number;
@@ -30,6 +40,7 @@ type Stats = {
     holder: { fullName: string } | null;
   }>;
   byCategory: Array<{ name: string; count: number }>;
+  byLocation: Array<{ id: string; name: string; kind: string; count: number }>;
   recentActivity: Array<{
     id: string;
     action: string;
@@ -50,8 +61,25 @@ const STAT_DEFS = [
   { key: "lowStock" as const, label: "Low stock", icon: AlertTriangle, color: "var(--color-magenta)" },
 ];
 
+// Donut chart colours — teal spectrum + gold for contrast
+const DONUT_COLORS = [
+  "#19E3C4",
+  "#0E4F4A",
+  "#6BFFE9",
+  "#C9A063",
+  "#E06FB2",
+  "#9FBDB8",
+  "#6E8D89",
+];
+
+const KIND_ICON: Record<string, typeof Building2> = {
+  site: Building2,
+  room: DoorOpen,
+  vehicle: Truck,
+};
+
 export function DashboardView() {
-  const [, navigate] = useHashRoute();
+  const [route, navigate] = useHashRoute();
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["stats"],
@@ -60,7 +88,7 @@ export function DashboardView() {
       if (!res.ok) throw new Error("Failed to load stats");
       return res.json() as Promise<Stats>;
     },
-    staleTime: 10_000, // 10s — dashboard data changes with actions
+    staleTime: 10_000,
   });
 
   return (
@@ -70,7 +98,7 @@ export function DashboardView() {
         <p className="micro-label mt-1">Live overview</p>
       </div>
 
-      {/* Stat pills row */}
+      {/* Row 1 — Stat pills */}
       <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-2">
         {STAT_DEFS.map((s) => {
           const Icon = s.icon;
@@ -98,7 +126,7 @@ export function DashboardView() {
       {/* Overdue returns alert */}
       {stats && stats.overdueReturns > 0 && (
         <button
-          onClick={() => navigate({ name: "items", })}
+          onClick={() => navigate({ name: "items" })}
           className="glass-card mt-4 flex w-full items-center gap-3 p-4 text-left transition-colors hover:border-[rgba(224,86,107,0.4)]"
           style={{ borderColor: "rgba(224,86,107,0.25)" }}
         >
@@ -125,55 +153,132 @@ export function DashboardView() {
         </button>
       )}
 
-      {/* Category breakdown */}
+      {/* Row 2 — Category radar (donut chart) */}
       {stats && stats.byCategory.length > 0 && (
         <div className="glass-card mt-4 p-4">
           <span className="micro-label mb-3 block">By category</span>
-          <div className="space-y-2">
-            {stats.byCategory.slice(0, 6).map((cat, i) => {
-              const maxCount = stats.byCategory[0].count;
-              const pct = (cat.count / maxCount) * 100;
-              return (
-                <div key={cat.name} className="flex items-center gap-3">
+          <div className="flex items-center gap-4">
+            {/* Donut chart with total in centre */}
+            <div className="relative h-36 w-36 flex-shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={stats.byCategory}
+                    dataKey="count"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={42}
+                    outerRadius={65}
+                    paddingAngle={2}
+                    stroke="none"
+                  >
+                    {stats.byCategory.map((_, i) => (
+                      <Cell key={i} fill={DONUT_COLORS[i % DONUT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              {/* Centre label */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center">
+                <span
+                  className="font-display text-2xl font-bold"
+                  style={{ color: "var(--color-teal)" }}
+                >
+                  {stats.totalItems}
+                </span>
+                <span className="micro-label">items</span>
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="flex-1 space-y-1.5">
+              {stats.byCategory.slice(0, 6).map((cat, i) => (
+                <button
+                  key={cat.name}
+                  onClick={() => navigate({ name: "items" })}
+                  className="flex w-full items-center gap-2 text-left transition-colors hover:bg-[rgba(25,227,196,0.04)] rounded-lg px-1.5 py-0.5"
+                >
                   <span
-                    className="w-24 flex-shrink-0 truncate text-xs"
+                    className="h-2 w-2 flex-shrink-0 rounded-full"
+                    style={{ background: DONUT_COLORS[i % DONUT_COLORS.length] }}
+                  />
+                  <span
+                    className="flex-1 truncate text-xs"
                     style={{ color: "var(--color-text-mid)" }}
                   >
                     {cat.name}
                   </span>
-                  <div
-                    className="h-2 flex-1 overflow-hidden rounded-full"
-                    style={{ background: "rgba(6,17,17,0.6)" }}
-                  >
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${pct}%`,
-                        background:
-                          i === 0
-                            ? "var(--color-teal)"
-                            : i === 1
-                            ? "var(--color-teal-deep)"
-                            : i === 2
-                            ? "var(--color-gold)"
-                            : "var(--color-text-low)",
-                      }}
-                    />
-                  </div>
                   <span
-                    className="font-display text-sm font-semibold"
-                    style={{ color: "var(--color-text-hi)", minWidth: 24, textAlign: "right" }}
+                    className="font-display text-xs font-semibold"
+                    style={{ color: "var(--color-text-hi)" }}
                   >
                     {cat.count}
                   </span>
-                </div>
-              );
-            })}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}
 
-      {/* Needs attention */}
+      {/* Row 3 — Locations panel */}
+      {stats && stats.byLocation.length > 0 && (
+        <div className="glass-card mt-4 p-4">
+          <div className="mb-3 flex items-center gap-2">
+            <MapPin size={14} style={{ color: "var(--color-text-low)" }} />
+            <span className="micro-label">Locations</span>
+          </div>
+          <div className="space-y-2">
+            {stats.byLocation.slice(0, 5).map((loc) => {
+              const Icon = KIND_ICON[loc.kind] ?? MapPin;
+              return (
+                <button
+                  key={loc.id}
+                  onClick={() => {
+                    setLocationFilter(loc.id, loc.name, "current");
+                    navigate({ name: "items" });
+                  }}
+                  className="flex w-full items-center gap-2.5 rounded-xl p-2 text-left transition-colors hover:bg-[rgba(25,227,196,0.04)]"
+                >
+                  <span
+                    className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full"
+                    style={{
+                      border: "1px solid rgba(25,227,196,0.2)",
+                      color: "var(--color-teal)",
+                      background: "rgba(14,79,74,0.2)",
+                    }}
+                  >
+                    <Icon size={14} />
+                  </span>
+                  <span
+                    className="flex-1 truncate text-sm"
+                    style={{ color: "var(--color-text-hi)" }}
+                  >
+                    {loc.name}
+                  </span>
+                  <span
+                    className="font-display text-sm font-semibold"
+                    style={{ color: "var(--color-teal)" }}
+                  >
+                    {loc.count}
+                  </span>
+                  <ArrowRight size={12} style={{ color: "var(--color-text-low)" }} />
+                </button>
+              );
+            })}
+          </div>
+          <button
+            onClick={() => navigate({ name: "locations" })}
+            className="mt-2 flex w-full items-center justify-center gap-1 text-xs transition-colors hover:text-[var(--color-teal)]"
+            style={{ color: "var(--color-text-mid)" }}
+          >
+            View all locations <ArrowRight size={12} />
+          </button>
+        </div>
+      )}
+
+      {/* Row 4 — Needs attention */}
       {stats && (stats.needsService > 0 || stats.lowStock > 0 || stats.overdueReturns > 0) && (
         <div className="glass-card mt-4 p-4">
           <div className="mb-3 flex items-center gap-2">
@@ -227,7 +332,11 @@ export function DashboardView() {
           </div>
           <div className="space-y-2">
             {stats.recentActivity.map((tx) => (
-              <div key={tx.id} className="flex items-center gap-2 text-xs">
+              <button
+                key={tx.id}
+                onClick={() => tx.itemId && navigate({ name: "item-detail", id: tx.itemId })}
+                className="flex w-full items-center gap-2 text-left text-xs transition-colors hover:bg-[rgba(25,227,196,0.04)] rounded-lg px-1.5 py-1"
+              >
                 <span
                   className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
                   style={{ background: getActionColor(tx.action) }}
@@ -244,7 +353,7 @@ export function DashboardView() {
                 <span className="ml-auto" style={{ color: "var(--color-text-low)" }}>
                   {formatTimeAgo(tx.createdAt)}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         </div>

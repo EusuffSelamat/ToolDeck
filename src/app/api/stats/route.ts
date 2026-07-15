@@ -29,6 +29,7 @@ export async function GET() {
     lowStockItems,
     overdueItems,
     byCategory,
+    byLocation,
     recentActivity,
   ] = await Promise.all([
     db.item.count({ where: whereActive }),
@@ -64,6 +65,18 @@ export async function GET() {
         _count: { select: { items: { where: { isDeleted: false } } } },
       },
     }),
+    // By location (for the locations panel)
+    db.location.findMany({
+      orderBy: { name: "asc" },
+      select: {
+        id: true,
+        name: true,
+        kind: true,
+        _count: {
+          select: { itemsCurrent: { where: { isDeleted: false } } },
+        },
+      },
+    }),
     // Recent activity (last 5)
     db.transaction.findMany({
       orderBy: { createdAt: "desc" },
@@ -89,6 +102,10 @@ export async function GET() {
     byCategory: byCategory
       .map((c) => ({ name: c.name, count: c._count.items }))
       .filter((c) => c.count > 0)
+      .sort((a, b) => b.count - a.count),
+    byLocation: byLocation
+      .map((l) => ({ id: l.id, name: l.name, kind: l.kind, count: l._count.itemsCurrent }))
+      .filter((l) => l.count > 0)
       .sort((a, b) => b.count - a.count),
     recentActivity: recentActivity.map((t) => ({
       id: t.id,

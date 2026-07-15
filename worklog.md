@@ -246,3 +246,30 @@ Stage Summary:
 - The "My items" filter works — items checked out to you appear in the list.
 - Produced artifacts: `prisma/schema.prisma` (expectedReturnDate), `src/app/api/items/[id]/action/route.ts`, `src/components/action-sheet.tsx`, updated `src/lib/items.ts`, `src/app/api/items/route.ts`, `src/app/api/items/[id]/route.ts`, `src/components/views/item-detail-view.tsx`.
 - Ready for owner review. Next: Milestone 6 (Dashboard — stat pills, category radar, locations panel, needs-attention list, activity feed, floating command bar).
+
+---
+Task ID: M6
+Agent: GLM (main)
+Task: Milestone 6 · Dashboard — §9 in full: stat pills, category radar (donut chart), locations panel, needs-attention list, activity feed, floating command bar.
+
+Work Log:
+- Enhanced `GET /api/stats` to include `byLocation` — location id, name, kind, and item count for each location with items.
+- Rewrote `DashboardView` with the full §9 layout:
+  • **Row 1 — Stat pills** (horizontally scrollable): Total · Available · Checked out · Needs service · Low stock. Real numbers from `/api/stats`, coloured per status.
+  • **Row 2 — Category radar**: a Recharts donut chart (`PieChart` with `innerRadius=42, outerRadius=65`) showing items by category. Total item count in the centre (Space Grotesk, teal). Legend on the right with colour dots + counts, tappable to navigate to items. 7-colour palette (teal spectrum + gold/magenta accents).
+  • **Row 3 — Locations panel**: compact list of locations with item count, location-type icon (building/door/truck), tappable to filter the items list by that location. "View all locations" link at the bottom.
+  • **Row 4 — Needs attention**: overdue returns (red), needs-service items (magenta), low-stock items (magenta). Each row tappable to navigate to the relevant view.
+  • **Recent activity preview**: last 5 transactions with person + action + item code + relative time. "View all →" link to the Activity tab. Each row tappable to navigate to the item detail.
+  • **Overdue returns alert**: a prominent red card at the top when items are past their expected return date.
+  • **Empty state**: "No items yet — tap Scan to add your first" with a teal CTA button.
+- All numbers reconcile with the database (verified: Total 3, Available 2, Needs service 1 — matches the DB).
+- VLM-verified: donut chart renders correctly with total in centre, locations panel shows real data, needs-attention and recent activity sections populated.
+- Lint clean.
+
+Stage Summary:
+- M6 acceptance met: every number on the dashboard reconciles with the database.
+- The donut chart is the §9 "circular radar motif" — teal strokes on dark track, total count in centre, tappable legend.
+- The locations panel gives a quick constellation-style overview with item counts; tapping navigates to the filtered items list.
+- The dashboard auto-refreshes every 10s (TanStack Query staleTime) so actions taken elsewhere are reflected.
+- Produced artifacts: enhanced `src/app/api/stats/route.ts` (byLocation), rewritten `src/components/views/dashboard-view.tsx` (Recharts donut + locations panel + full §9 layout).
+- Ready for owner review. Next: Milestone 7 (Polish + export — CSV/XLSX, maintenance log UI, Settings, final theme pass).

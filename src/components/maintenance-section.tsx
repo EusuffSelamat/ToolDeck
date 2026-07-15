@@ -60,14 +60,17 @@ export function MaintenanceSection({ itemId }: { itemId: string }) {
       ) : (
         <div className="space-y-2">
           {logs.map((log) => {
-            const isUpcoming = log.nextDue && new Date(log.nextDue) <= new Date(Date.now() + 14 * 86400000);
+            const now = new Date();
+            const dueDate = log.nextDue ? new Date(log.nextDue) : null;
+            const isOverdue = dueDate ? dueDate < now : false;
+            const isUpcoming = !isOverdue && dueDate ? dueDate <= new Date(Date.now() + 14 * 86400000) : false;
             return (
               <div key={log.id} className="glass-card p-3">
                 <div className="flex items-start gap-2">
                   <span
                     className="mt-1 h-2 w-2 flex-shrink-0 rounded-full"
                     style={{
-                      background: isUpcoming ? "var(--color-magenta)" : "var(--color-teal)",
+                      background: isOverdue ? "var(--color-danger)" : isUpcoming ? "var(--color-magenta)" : "var(--color-teal)",
                     }}
                   />
                   <div className="min-w-0 flex-1">
@@ -88,10 +91,16 @@ export function MaintenanceSection({ itemId }: { itemId: string }) {
                       {log.nextDue && (
                         <span
                           className="flex items-center gap-1 text-[10px] font-semibold"
-                          style={{ color: isUpcoming ? "var(--color-magenta)" : "var(--color-text-low)" }}
+                          style={{
+                            color: isOverdue
+                              ? "var(--color-danger)"
+                              : isUpcoming
+                              ? "var(--color-magenta)"
+                              : "var(--color-text-low)",
+                          }}
                         >
                           <Clock size={10} />
-                          {isUpcoming ? "Due soon: " : "Next: "}
+                          {isOverdue ? "Overdue: " : isUpcoming ? "Due soon: " : "Next: "}
                           {new Date(log.nextDue).toLocaleDateString("en-SG", { day: "numeric", month: "short" })}
                         </span>
                       )}
@@ -200,7 +209,7 @@ function MaintenanceForm({
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="What was done? e.g. Re worn brushes, cleaned motor"
+              placeholder="What was done? e.g. Replaced worn brushes, cleaned motor"
               rows={3}
               className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
               style={{ color: "var(--color-text-hi)" }}

@@ -23,7 +23,7 @@ export async function compressImage(
       });
       try {
         return drawAndExport(bitmap.width, bitmap.height, (ctx, w, h) =>
-          ctx.drawImage(bitmap, 0, 0, w, h)
+          ctx.drawImage(bitmap, 0, 0, w, h), maxEdge, quality
         );
       } finally {
         bitmap.close();
@@ -38,7 +38,7 @@ export async function compressImage(
   try {
     const img = await loadImage(url);
     return drawAndExport(img.naturalWidth, img.naturalHeight, (ctx, w, h) =>
-      ctx.drawImage(img, 0, 0, w, h)
+      ctx.drawImage(img, 0, 0, w, h), maxEdge, quality
     );
   } finally {
     URL.revokeObjectURL(url);
@@ -48,14 +48,16 @@ export async function compressImage(
 function drawAndExport(
   srcW: number,
   srcH: number,
-  draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void
+  draw: (ctx: CanvasRenderingContext2D, w: number, h: number) => void,
+  maxEdge: number,
+  quality: number
 ): string {
   // Calculate target dimensions (preserve aspect ratio, cap longest edge)
   let width = srcW;
   let height = srcH;
   const longestEdge = Math.max(width, height);
-  if (longestEdge > 1280) {
-    const scale = 1280 / longestEdge;
+  if (longestEdge > maxEdge) {
+    const scale = maxEdge / longestEdge;
     width = Math.round(width * scale);
     height = Math.round(height * scale);
   }
@@ -67,7 +69,7 @@ function drawAndExport(
   if (!ctx) throw new Error("Canvas 2D context unavailable");
   draw(ctx, width, height);
 
-  return canvas.toDataURL("image/jpeg", 0.8);
+  return canvas.toDataURL("image/jpeg", quality);
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {

@@ -36,6 +36,7 @@ export function TopBar() {
         <button
           type="button"
           aria-label="Search"
+          onClick={() => navigate({ name: "items" })}
           className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[rgba(25,227,196,0.08)]"
           style={{ color: "var(--color-text-mid)" }}
         >

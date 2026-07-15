@@ -321,3 +321,41 @@ Stage Summary:
 - All 7 milestones complete. The app is feature-complete per the build pack.
 - Produced artifacts: `src/lib/export.ts`, `src/app/api/items/[id]/maintenance/route.ts`, `src/app/api/categories/route.ts`, `src/app/api/categories/[id]/route.ts`, `src/components/maintenance-section.tsx`, `src/components/views/settings-view.tsx`, updated `src/components/views/items-view.tsx` (export dropdown), `src/components/views/item-detail-view.tsx` (maintenance section), `src/components/top-bar.tsx` (Settings menu item), `src/hooks/use-hash-route.ts` (settings route), `src/components/app-shell.tsx`.
 - TOOLDECK v1.0 is complete and ready for deployment.
+
+---
+Task ID: REVIEW-2+FIXES
+Agent: GLM (main)
+Task: Move pencil edit function to Action sheet, fix condition bug, full codebase review + fix all CRITICALs and key HIGHs.
+
+Work Log:
+- Ran comprehensive code review (subagent REVIEW-2). Found 5 CRITICAL, 12 HIGH, 12 MEDIUM, 12 LOW issues.
+- **User request**: Removed pencil icon from ItemDetailView. Added "Edit details" as the first action in the ActionSheet — opens a form with name, brand, model, serial, category, home location, notes. Uses PATCH /api/items/[id]. The #/items/:id/edit route stays for the AI prefill flow (Scan → Add as new).
+- **C1 (CRITICAL)**: Fixed condition/status sync in PATCH route — when condition changes, status now syncs (needs_service → needs_service, out_of_order → out_of_order, good → available unless checked_out). This was the root cause of the user's reported bug.
+- **C2 (CRITICAL)**: Added @unique to Location.name in Prisma schema. Ran db:push. Now the P2002 duplicate-name check in the locations API actually fires.
+- **C3 (CRITICAL)**: Raised items list default limit from 50 to 200, cap from 100 to 500. Settings export-all uses limit=2000. Lists + exports no longer truncate at 50/100 items.
+- **C4 (CRITICAL)**: Fixed lowStock post-filter — when lowStock=true, the query now uses take=2000 (instead of 50) before the JS post-filter, so all low-stock items are returned and the total is correct.
+- **C5 (CRITICAL)**: Added guard in the condition action — rejects condition→needs_service/out_of_order while the item is checked_out (returns 400 "Return this item before marking it as needs service or out of order"). Prevents inconsistent state.
+- **H2**: Fixed compressImage — maxEdge + quality params now passed through to drawAndExport instead of being hardcoded.
+- **H3**: Added maintenanceDueSoon to /api/stats — queries MaintenanceLog where nextDue ≤ 14 days from now, item not deleted. Dashboard "Needs attention" panel now shows "N maintenance items due soon" row (magenta, tappable to the first item).
+- **H5**: Gated Prisma query log on NODE_ENV — `log: ['query', 'warn', 'error']` in dev, `['warn', 'error']` in production. No more query spam in prod.
+- **H7**: Added isDeleted to the stats recentActivity item select. Dashboard can now distinguish deleted items.
+- **H10**: Bumped TOAST_LIMIT from 1 to 3 — undo toasts no longer get displaced by subsequent toasts.
+- **H11**: Wired the top-bar Search button — now navigates to the Items view.
+- **M6**: Fixed typo in maintenance placeholder ("Re" → "Replaced").
+- **M7**: Fixed settings "Recently deleted" icon — was X rotated 45° (looked like +), now ChevronRight.
+- **M12**: Distinguished overdue vs due-soon in maintenance section — overdue shows red "Overdue:" badge, due-soon shows magenta "Due soon:" badge, future shows low "Next:" badge.
+
+VERIFICATION:
+- ✅ Pencil icon removed — item detail now has only Action + Delete buttons
+- ✅ "Edit details" action works — pre-filled form, saved name change, history shows "Updated: name"
+- ✅ Condition action syncs status — set to "needs_service", status pill shows "Needs service"
+- ✅ C5 guard works — rejects condition→out_of_order while checked_out
+- ✅ Dashboard shows maintenance due-soon row when applicable
+- ✅ Lint clean, no runtime errors
+
+Stage Summary:
+- The user's reported bug (condition not updating via pencil edit) is fixed at the root — the PATCH route now syncs status when condition changes.
+- The pencil icon is removed; all editing happens through the Action sheet's "Edit details" action.
+- 5 CRITICAL issues + 7 HIGH issues from the code review are all fixed.
+- The #/items/:id/edit route stays for the AI prefill flow (Scan → Add as new) — the form view is still used for creating new items.
+- Remaining LOW items (stale comments, unused deps, TOAST_REMOVE_DELAY) are non-blocking polish for a future pass.

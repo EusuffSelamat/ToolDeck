@@ -172,6 +172,19 @@ export async function PATCH(
   if (data.condition !== undefined && data.condition !== existing.condition) {
     updateData.condition = data.condition;
     changedFields.push("condition");
+    // Sync status to match condition (same logic as the /action route)
+    const newStatus =
+      data.condition === "needs_service"
+        ? "needs_service"
+        : data.condition === "out_of_order"
+        ? "out_of_order"
+        : existing.status === "checked_out"
+        ? "checked_out"
+        : "available";
+    if (newStatus !== existing.status) {
+      updateData.status = newStatus;
+      changedFields.push("status");
+    }
   }
   // Resolve "Same as home" (null/empty) to the actual home location ID
   // BEFORE comparing, so the update fires correctly.

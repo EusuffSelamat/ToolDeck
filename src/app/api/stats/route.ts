@@ -31,6 +31,7 @@ export async function GET() {
     byCategory,
     byLocation,
     recentActivity,
+    maintenanceDueSoon,
   ] = await Promise.all([
     db.item.count({ where: whereActive }),
     db.item.count({ where: { ...whereActive, status: "available" } }),
@@ -82,8 +83,23 @@ export async function GET() {
       orderBy: { createdAt: "desc" },
       take: 5,
       include: {
-        item: { select: { id: true, code: true, name: true } },
+        item: { select: { id: true, code: true, name: true, isDeleted: true } },
         person: { select: { fullName: true } },
+      },
+    }),
+    // Maintenance due soon (nextDue within 14 days, item not deleted)
+    db.maintenanceLog.findMany({
+      where: {
+        nextDue: { lte: new Date(Date.now() + 14 * 86400000) },
+        item: { isDeleted: false },
+      },
+      orderBy: { nextDue: "asc" },
+      take: 10,
+      select: {
+        id: true,
+        nextDue: true,
+        description: true,
+        item: { select: { id: true, code: true, name: true } },
       },
     }),
   ]);
@@ -115,7 +131,16 @@ export async function GET() {
       itemCode: t.item?.code ?? null,
       itemName: t.item?.name ?? null,
       itemId: t.item?.id ?? null,
+      itemIsDeleted: t.item?.isDeleted ?? false,
       personName: t.person?.fullName ?? null,
+    })),
+    maintenanceDueSoon: maintenanceDueSoon.map((m) => ({
+      id: m.id,
+      nextDue: m.nextDue,
+      description: m.description,
+      itemId: m.item.id,
+      itemCode: m.item.code,
+      itemName: m.item.name,
     })),
   });
 }

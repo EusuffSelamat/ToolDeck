@@ -176,14 +176,25 @@ export async function POST(
           { status: 400 }
         );
       }
-      // Map condition to status: needs_service → needs_service, out_of_order → out_of_order, good → available (if not checked out)
+      // Reject condition change to needs_service/out_of_order while checked out
+      // — the item must be returned first to avoid an inconsistent state
+      if (
+        existing.status === "checked_out" &&
+        (data.condition === "needs_service" || data.condition === "out_of_order")
+      ) {
+        return NextResponse.json(
+          { error: "Return this item before marking it as needs service or out of order." },
+          { status: 400 }
+        );
+      }
+      // Map condition to status: needs_service → needs_service, out_of_order → out_of_order, good → available
       const newStatus =
         data.condition === "needs_service"
           ? "needs_service"
           : data.condition === "out_of_order"
           ? "out_of_order"
           : existing.status === "checked_out"
-          ? "checked_out" // don't change status if checked out
+          ? "checked_out"
           : "available";
 
       updateData = {

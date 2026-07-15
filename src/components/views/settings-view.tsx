@@ -17,6 +17,7 @@ import {
   Tag,
   LogOut,
   Loader2,
+  ChevronRight,
 } from "lucide-react";
 import { useSession, signOut } from "next-auth/react";
 import { useHashRoute } from "@/hooks/use-hash-route";
@@ -47,7 +48,7 @@ export function SettingsView() {
 
   async function handleExportAll(format: "csv" | "xlsx") {
     // Fetch all non-deleted items for export
-    const res = await fetch("/api/items?limit=100");
+    const res = await fetch("/api/items?limit=2000");
     if (!res.ok) {
       toast({ title: "Export failed", description: "Could not load items." });
       return;
@@ -223,7 +224,7 @@ export function SettingsView() {
           <span className="text-sm" style={{ color: "var(--color-text-mid)" }}>
             View restorable items (30-day window)
           </span>
-          <X size={14} className="rotate-45" style={{ color: "var(--color-text-low)" }} />
+          <ChevronRight size={14} style={{ color: "var(--color-text-low)" }} />
         </button>
       </div>
 

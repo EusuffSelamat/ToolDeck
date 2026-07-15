@@ -20,6 +20,7 @@ import {
   Building2,
   DoorOpen,
   Truck,
+  Wrench,
 } from "lucide-react";
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
 import { setLocationFilter } from "@/lib/location-filter";
@@ -49,7 +50,16 @@ type Stats = {
     itemCode: string | null;
     itemName: string | null;
     itemId: string | null;
+    itemIsDeleted: boolean;
     personName: string | null;
+  }>;
+  maintenanceDueSoon: Array<{
+    id: string;
+    nextDue: string;
+    description: string;
+    itemId: string;
+    itemCode: string;
+    itemName: string;
   }>;
 };
 
@@ -292,6 +302,14 @@ export function DashboardView() {
                 color="var(--color-danger)"
                 label={`${stats.overdueReturns} overdue ${stats.overdueReturns === 1 ? "return" : "returns"}`}
                 onClick={() => navigate({ name: "activity" })}
+              />
+            )}
+            {stats.maintenanceDueSoon.length > 0 && (
+              <AttentionRow
+                icon={Wrench}
+                color="var(--color-magenta)"
+                label={`${stats.maintenanceDueSoon.length} maintenance ${stats.maintenanceDueSoon.length === 1 ? "item" : "items"} due soon`}
+                onClick={() => navigate({ name: "item-detail", id: stats.maintenanceDueSoon[0].itemId })}
               />
             )}
             {stats.needsService > 0 && (

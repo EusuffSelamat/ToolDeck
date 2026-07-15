@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
-  Pencil,
   Trash2,
   Package,
   MapPin,
@@ -82,13 +81,25 @@ export function ItemDetailView({ id }: { id: string }) {
     },
   });
 
-  // Fetch locations for the action sheet
+  // Fetch locations + categories for the action sheet
   const { data: locationsData } = useQuery({
     queryKey: ["locations"],
     queryFn: async () => {
       const res = await fetch("/api/locations");
       if (!res.ok) throw new Error("Failed to load locations");
       return res.json() as Promise<{
+        locations: Array<{ id: string; name: string }>;
+      }>;
+    },
+  });
+
+  const { data: metaData } = useQuery({
+    queryKey: ["meta"],
+    queryFn: async () => {
+      const res = await fetch("/api/meta");
+      if (!res.ok) throw new Error("Failed to load metadata");
+      return res.json() as Promise<{
+        categories: Array<{ id: string; name: string }>;
         locations: Array<{ id: string; name: string }>;
       }>;
     },
@@ -207,7 +218,7 @@ export function ItemDetailView({ id }: { id: string }) {
             </p>
           )}
         </div>
-        {/* Hide edit/delete/actions when soft-deleted */}
+        {/* Hide actions/delete when soft-deleted */}
         {!item.isDeleted && (
           <div className="flex gap-2">
             <button
@@ -216,13 +227,6 @@ export function ItemDetailView({ id }: { id: string }) {
               aria-label="Actions"
             >
               <Zap size={15} /> Action
-            </button>
-            <button
-              onClick={() => navigate({ name: "item-edit", id: item.id })}
-              className="btn-ghost-teal flex h-9 w-9 items-center justify-center"
-              aria-label="Edit"
-            >
-              <Pencil size={16} />
             </button>
             <button
               onClick={handleDelete}
@@ -409,12 +413,16 @@ export function ItemDetailView({ id }: { id: string }) {
       </div>
 
       {/* Action sheet */}
-      {showActions && session?.user && locationsData && (
+      {showActions && session?.user && locationsData && metaData && (
         <ActionSheet
           item={{
             id: item.id,
             code: item.code,
             name: item.name,
+            brand: item.brand,
+            model: item.model,
+            serialNo: item.serialNo,
+            categoryId: item.categoryName ? metaData.categories.find(c => c.name === item.categoryName)?.id ?? null : null,
             trackingType: item.trackingType,
             status: item.status,
             condition: item.condition,
@@ -425,9 +433,11 @@ export function ItemDetailView({ id }: { id: string }) {
             currentLocationName: item.currentLocationName,
             holderId: item.holderId,
             holderName: item.holderName,
+            notes: item.notes,
           }}
           meta={{
             locations: locationsData.locations,
+            categories: metaData.categories,
             currentUser: {
               id: (session.user as { id?: string }).id ?? "",
               name: session.user.name ?? "User",

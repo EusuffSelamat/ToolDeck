@@ -10,6 +10,7 @@ import {
   Plus,
   Minus,
   Wrench,
+  Pencil,
   Loader2,
   Check,
   ChevronRight,
@@ -17,10 +18,11 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-type Action = "checkout" | "checkin" | "move" | "adjust_qty" | "condition";
+type Action = "edit" | "checkout" | "checkin" | "move" | "adjust_qty" | "condition";
 
 type Meta = {
   locations: Array<{ id: string; name: string }>;
+  categories: Array<{ id: string; name: string }>;
   currentUser: { id: string; name: string };
 };
 
@@ -28,6 +30,10 @@ type ItemData = {
   id: string;
   code: string;
   name: string;
+  brand: string | null;
+  model: string | null;
+  serialNo: string | null;
+  categoryId: string | null;
   trackingType: string;
   status: string;
   condition: string;
@@ -38,6 +44,7 @@ type ItemData = {
   currentLocationName: string | null;
   holderId: string | null;
   holderName: string | null;
+  notes: string | null;
 };
 
 export function ActionSheet({
@@ -64,6 +71,12 @@ export function ActionSheet({
     disabled?: boolean;
     disabledReason?: string;
   }> = [
+    {
+      id: "edit",
+      label: "Edit details",
+      icon: Pencil,
+      color: "var(--color-teal)",
+    },
     {
       id: "checkout",
       label: "Check out",
@@ -215,7 +228,17 @@ function ActionForm({
   const [reason, setReason] = useState<"used" | "restocked" | "counted" | "damaged">("used");
   const [condition, setCondition] = useState<"good" | "needs_service" | "out_of_order">("good");
 
+  // Edit details state
+  const [editName, setEditName] = useState(item.name);
+  const [editBrand, setEditBrand] = useState(item.brand ?? "");
+  const [editModel, setEditModel] = useState(item.model ?? "");
+  const [editSerial, setEditSerial] = useState(item.serialNo ?? "");
+  const [editCategoryId, setEditCategoryId] = useState(item.categoryId ?? "");
+  const [editHomeLocationId, setEditHomeLocationId] = useState(item.homeLocationId ?? "");
+  const [editNotes, setEditNotes] = useState(item.notes ?? "");
+
   const labels: Record<Action, string> = {
+    edit: "Edit details",
     checkout: "Check out",
     checkin: "Return item",
     move: "Move to location",
@@ -227,27 +250,48 @@ function ActionForm({
     e.preventDefault();
     setBusy(true);
 
-    const payload: Record<string, unknown> = { action, note: note.trim() || null };
-
-    if (action === "checkout") {
-      payload.holderId = holderId || null;
-      payload.toLocationId = toLocationId || null;
-      payload.expectedReturnDate = expectedReturnDate || null;
-    } else if (action === "move") {
-      payload.toLocationId = toLocationId;
-    } else if (action === "adjust_qty") {
-      payload.delta = parseFloat(delta);
-      payload.reason = reason;
-    } else if (action === "condition") {
-      payload.condition = condition;
-    }
-
     try {
-      const res = await fetch(`/api/items/${item.id}/action`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let res: Response;
+
+      if (action === "edit") {
+        // Edit details uses PATCH /api/items/[id]
+        const payload: Record<string, unknown> = {
+          name: editName.trim(),
+          brand: editBrand.trim() || null,
+          model: editModel.trim() || null,
+          serialNo: editSerial.trim() || null,
+          categoryId: editCategoryId || null,
+          homeLocationId: editHomeLocationId || null,
+          notes: editNotes.trim() || null,
+        };
+        res = await fetch(`/api/items/${item.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      } else {
+        // Custody actions use POST /api/items/[id]/action
+        const payload: Record<string, unknown> = { action, note: note.trim() || null };
+
+        if (action === "checkout") {
+          payload.holderId = holderId || null;
+          payload.toLocationId = toLocationId || null;
+          payload.expectedReturnDate = expectedReturnDate || null;
+        } else if (action === "move") {
+          payload.toLocationId = toLocationId;
+        } else if (action === "adjust_qty") {
+          payload.delta = parseFloat(delta);
+          payload.reason = reason;
+        } else if (action === "condition") {
+          payload.condition = condition;
+        }
+
+        res = await fetch(`/api/items/${item.id}/action`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -259,10 +303,11 @@ function ActionForm({
         return;
       }
 
-      // Invalidate queries to refresh detail + lists
+      // Invalidate queries to refresh detail + lists + stats
       qc.invalidateQueries({ queryKey: ["item", item.id] });
       qc.invalidateQueries({ queryKey: ["items"] });
       qc.invalidateQueries({ queryKey: ["locations"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
 
       toast({
         title: labels[action],
@@ -292,6 +337,108 @@ function ActionForm({
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4 p-5">
+        {/* Edit details form */}
+        {action === "edit" && (
+          <>
+            <FormField label="Name">
+              <input
+                type="text"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
+                style={{ color: "var(--color-text-hi)" }}
+                required
+                autoFocus
+              />
+            </FormField>
+
+            <div className="grid grid-cols-2 gap-3">
+              <FormField label="Brand">
+                <input
+                  type="text"
+                  value={editBrand}
+                  onChange={(e) => setEditBrand(e.target.value)}
+                  placeholder="—"
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
+                  style={{ color: "var(--color-text-hi)" }}
+                />
+              </FormField>
+              <FormField label="Model">
+                <input
+                  type="text"
+                  value={editModel}
+                  onChange={(e) => setEditModel(e.target.value)}
+                  placeholder="—"
+                  className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
+                  style={{ color: "var(--color-text-hi)" }}
+                />
+              </FormField>
+            </div>
+
+            <FormField label="Serial number">
+              <input
+                type="text"
+                value={editSerial}
+                onChange={(e) => setEditSerial(e.target.value)}
+                placeholder="—"
+                className="w-full bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
+                style={{ color: "var(--color-text-hi)" }}
+              />
+            </FormField>
+
+            <FormField label="Category">
+              <select
+                value={editCategoryId}
+                onChange={(e) => setEditCategoryId(e.target.value)}
+                className="w-full bg-transparent text-sm outline-none"
+                style={{ color: "var(--color-text-hi)" }}
+              >
+                <option value="" style={{ background: "var(--color-bg-1)" }}>
+                  Uncategorised
+                </option>
+                {meta.categories.map((c) => (
+                  <option key={c.id} value={c.id} style={{ background: "var(--color-bg-1)" }}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Home location">
+              <select
+                value={editHomeLocationId}
+                onChange={(e) => setEditHomeLocationId(e.target.value)}
+                className="w-full bg-transparent text-sm outline-none"
+                style={{ color: "var(--color-text-hi)" }}
+              >
+                <option value="" style={{ background: "var(--color-bg-1)" }}>
+                  None
+                </option>
+                {meta.locations.map((l) => (
+                  <option key={l.id} value={l.id} style={{ background: "var(--color-bg-1)" }}>
+                    {l.name}
+                  </option>
+                ))}
+              </select>
+            </FormField>
+
+            <FormField label="Notes">
+              <textarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                placeholder="Optional notes…"
+                rows={3}
+                className="w-full resize-none bg-transparent text-sm outline-none placeholder:text-[var(--color-text-low)]"
+                style={{ color: "var(--color-text-hi)" }}
+              />
+            </FormField>
+
+            <p className="text-xs" style={{ color: "var(--color-text-low)" }}>
+              Tracking type, condition, current location, and holder are managed via the other actions.
+            </p>
+          </>
+        )}
+
         {/* Checkout form */}
         {action === "checkout" && (
           <>

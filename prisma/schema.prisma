@@ -1,8 +1,9 @@
 // TOOLDECK — Prisma schema (SQLite)
-// M1 · Foundation: User model only (auth via NextAuth credentials provider).
-// The full §5 inventory schema (locations, categories, items, transactions,
-// maintenance_logs) arrives in M2. The User model here stands in for Supabase's
-// `auth.users` + `profiles` (decision 1a: local stack mirror of the spec).
+// Adaptation of §5 SQL schema. See worklog for adaptation notes.
+//
+// M1 · User (auth)  ✅
+// M2 · Full inventory schema: locations, categories, items, transactions,
+//      maintenance_logs  ✅
 
 generator client {
   provider = "prisma-client-js"
@@ -13,6 +14,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── Users (M1) ──────────────────────────────────────────────────────────
+// Stands in for Supabase `auth.users` + `profiles` (decision 1a).
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -20,4 +23,125 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Relations (named to disambiguate multiple FKs to the same model)
+  heldItems       Item[]         @relation("ItemHolder")
+  createdItems    Item[]         @relation("ItemCreator")
+  txPerformed     Transaction[]  @relation("TxPerson")
+  txReceived      Transaction[]  @relation("TxHolder")
+  maintenanceMade MaintenanceLog[] @relation("MaintenanceCreator")
+}
+
+// ── Locations (§5) ──────────────────────────────────────────────────────
+// kind: 'site' | 'room' | 'vehicle' (validated in API layer)
+model Location {
+  id        String   @id @default(cuid())
+  name      String
+  kind      String   @default("site")
+  createdAt DateTime @default(now())
+
+  itemsHome    Item[]        @relation("HomeLocation")
+  itemsCurrent Item[]        @relation("CurrentLocation")
+  txFrom       Transaction[] @relation("TxFromLocation")
+  txTo         Transaction[] @relation("TxToLocation")
+}
+
+// ── Categories (§5) ─────────────────────────────────────────────────────
+model Category {
+  id    String @id @default(cuid())
+  name  String @unique
+  sort  Int    @default(0)
+
+  items Item[]
+}
+
+// ── Items (§5) ──────────────────────────────────────────────────────────
+// trackingType: 'asset' | 'stock'
+// status: 'available' | 'checked_out' | 'needs_service' | 'out_of_order'
+// condition: 'good' | 'needs_service' | 'out_of_order'
+// code: 'AST-0001' (assets) | 'STK-0001' (stock) — assigned on insert
+// Soft delete: isDeleted=true, deletedAt=now(); never hard-deleted from the UI.
+model Item {
+  id              String   @id @default(cuid())
+  code            String   @unique
+  name            String
+  brand           String?
+  model           String?
+  serialNo        String?
+  categoryId      String?
+  category        Category? @relation(fields: [categoryId], references: [id])
+  trackingType    String   // 'asset' | 'stock'
+  status          String   @default("available")
+  quantity        Float    @default(1)
+  minQuantity     Float    @default(0)
+  condition       String   @default("good")
+  homeLocationId  String?
+  homeLocation    Location? @relation("HomeLocation", fields: [homeLocationId], references: [id])
+  currentLocationId String?
+  currentLocation  Location? @relation("CurrentLocation", fields: [currentLocationId], references: [id])
+  holderId        String?
+  holder          User?     @relation("ItemHolder", fields: [holderId], references: [id])
+  photoUrl        String?
+  aiConfidence    Float?
+  notes           String?
+  isDeleted       Boolean  @default(false)
+  deletedAt       DateTime?
+  createdBy       String?
+  createdByUser   User?     @relation("ItemCreator", fields: [createdBy], references: [id])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  transactions    Transaction[]
+  maintenanceLogs MaintenanceLog[]
+
+  @@index([trackingType])
+  @@index([status])
+  @@index([isDeleted])
+  @@index([holderId])
+  @@index([currentLocationId])
+  @@index([categoryId])
+}
+
+// ── Transactions / audit trail (§5) ─────────────────────────────────────
+// action: 'add' | 'checkout' | 'checkin' | 'move' | 'adjust_qty' |
+//         'condition' | 'edit' | 'delete' | 'restore' | 'maintenance'
+// Every state change writes a row — this is what makes open editing safe.
+model Transaction {
+  id            String   @id @default(cuid())
+  itemId        String
+  item          Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  action        String
+  qtyDelta      Float?
+  fromLocationId String?
+  fromLocation   Location? @relation("TxFromLocation", fields: [fromLocationId], references: [id])
+  toLocationId  String?
+  toLocation     Location? @relation("TxToLocation", fields: [toLocationId], references: [id])
+  personId      String?
+  person        User?     @relation("TxPerson", fields: [personId], references: [id])
+  holderId      String?
+  holder        User?     @relation("TxHolder", fields: [holderId], references: [id])
+  note          String?
+  createdAt     DateTime @default(now())
+
+  @@index([itemId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([personId])
+}
+
+// ── Maintenance logs (§5) ───────────────────────────────────────────────
+model MaintenanceLog {
+  id          String   @id @default(cuid())
+  itemId      String
+  item        Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  doneAt      DateTime @default(now())
+  description String
+  cost        Float?
+  nextDue     DateTime?
+  createdBy   String?
+  createdByUser User?   @relation("MaintenanceCreator", fields: [createdBy], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([itemId])
+  @@index([nextDue])
 }

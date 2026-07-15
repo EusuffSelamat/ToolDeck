@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -14,16 +15,22 @@ import {
   Wrench,
   StickyNote,
   Clock,
+  Zap,
+  Calendar,
 } from "lucide-react";
+import { useSession } from "next-auth/react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
+import { ActionSheet } from "@/components/action-sheet";
 
 export function ItemDetailView({ id }: { id: string }) {
   const [, navigate] = useHashRoute();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { data: session } = useSession();
+  const [showActions, setShowActions] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["item", id],
@@ -44,9 +51,13 @@ export function ItemDetailView({ id }: { id: string }) {
           condition: string;
           quantity: number;
           minQuantity: number;
+          homeLocationId: string | null;
           homeLocationName: string | null;
+          currentLocationId: string | null;
           currentLocationName: string | null;
+          holderId: string | null;
           holderName: string | null;
+          expectedReturnDate: string | null;
           photoUrl: string | null;
           aiConfidence: number | null;
           notes: string | null;
@@ -66,6 +77,18 @@ export function ItemDetailView({ id }: { id: string }) {
             toLocationName: string | null;
           }>;
         };
+      }>;
+    },
+  });
+
+  // Fetch locations for the action sheet
+  const { data: locationsData } = useQuery({
+    queryKey: ["locations"],
+    queryFn: async () => {
+      const res = await fetch("/api/locations");
+      if (!res.ok) throw new Error("Failed to load locations");
+      return res.json() as Promise<{
+        locations: Array<{ id: string; name: string }>;
       }>;
     },
   });
@@ -183,9 +206,16 @@ export function ItemDetailView({ id }: { id: string }) {
             </p>
           )}
         </div>
-        {/* Hide edit/delete when soft-deleted */}
+        {/* Hide edit/delete/actions when soft-deleted */}
         {!item.isDeleted && (
           <div className="flex gap-2">
+            <button
+              onClick={() => setShowActions(true)}
+              className="btn-teal flex h-9 items-center gap-1.5 px-4 text-sm"
+              aria-label="Actions"
+            >
+              <Zap size={15} /> Action
+            </button>
             <button
               onClick={() => navigate({ name: "item-edit", id: item.id })}
               className="btn-ghost-teal flex h-9 w-9 items-center justify-center"
@@ -207,6 +237,35 @@ export function ItemDetailView({ id }: { id: string }) {
           </div>
         )}
       </div>
+
+      {/* Checked-out / overdue banner */}
+      {item.status === "checked_out" && (
+        <div
+          className="glass-card mt-3 flex items-center gap-3 p-3"
+          style={{ borderColor: "rgba(201,160,99,0.3)" }}
+        >
+          <Calendar size={16} style={{ color: "var(--color-gold)" }} />
+          <div className="flex-1">
+            <p className="text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
+              Checked out{item.holderName ? ` by ${item.holderName}` : ""}
+            </p>
+            {item.expectedReturnDate && (
+              <p className="text-xs" style={{
+                color: isOverdue(item.expectedReturnDate) ? "var(--color-danger)" : "var(--color-text-mid)"
+              }}>
+                {isOverdue(item.expectedReturnDate) ? "Overdue · " : "Expected back "}
+                {new Date(item.expectedReturnDate).toLocaleDateString("en-SG", { day: "numeric", month: "short" })}
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => setShowActions(true)}
+            className="btn-ghost-teal flex h-8 items-center px-3 text-xs"
+          >
+            Return
+          </button>
+        </div>
+      )}
 
       {/* Deleted banner */}
       {item.isDeleted && (
@@ -344,6 +403,35 @@ export function ItemDetailView({ id }: { id: string }) {
           </div>
         )}
       </div>
+
+      {/* Action sheet */}
+      {showActions && session?.user && locationsData && (
+        <ActionSheet
+          item={{
+            id: item.id,
+            code: item.code,
+            name: item.name,
+            trackingType: item.trackingType,
+            status: item.status,
+            condition: item.condition,
+            quantity: item.quantity,
+            minQuantity: item.minQuantity,
+            homeLocationId: item.homeLocationId,
+            currentLocationId: item.currentLocationId,
+            currentLocationName: item.currentLocationName,
+            holderId: item.holderId,
+            holderName: item.holderName,
+          }}
+          meta={{
+            locations: locationsData.locations,
+            currentUser: {
+              id: (session.user as { id?: string }).id ?? "",
+              name: session.user.name ?? "User",
+            },
+          }}
+          onClose={() => setShowActions(false)}
+        />
+      )}
     </div>
   );
 }
@@ -421,4 +509,11 @@ function formatDate(iso: string): string {
     month: "short",
     year: d.getFullYear() === now.getFullYear() ? undefined : "numeric",
   });
+}
+
+function isOverdue(dateStr: string): boolean {
+  const d = new Date(dateStr);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return d < today;
 }

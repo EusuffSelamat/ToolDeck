@@ -66,6 +66,7 @@ export async function GET(
     currentLocationName: item.currentLocation?.name ?? null,
     holderId: item.holderId,
     holderName: item.holder?.fullName ?? null,
+    expectedReturnDate: item.expectedReturnDate,
     photoUrl: item.photoUrl,
     aiConfidence: item.aiConfidence,
     notes: item.notes,

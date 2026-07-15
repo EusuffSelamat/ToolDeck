@@ -197,3 +197,52 @@ Stage Summary:
 - Remaining items for M5+: the action sheet (check-out/return/move/adjust) will write `Transaction` rows. The history timeline already renders all action types. M7 will add CSV/XLSX export + maintenance log UI + Vercel deployment.
 - Produced artifacts: `src/app/api/identify/route.ts`, `src/app/api/items/purge/route.ts`, `src/lib/ai-prefill.ts`, rewritten `src/lib/items.ts` (transactions, atomic photo, validation), rewritten `src/lib/compress-image.ts` (EXIF), rewritten `src/app/api/items/route.ts` (retry, transactions), rewritten `src/app/api/items/[id]/route.ts` (diff, deleted banner), rewritten `src/app/api/items/[id]/restore/route.ts`, `src/app/api/items/deleted/route.ts`, `src/app/api/signup/route.ts`, rewritten `src/components/views/scan-view.tsx` (full M4 flow), updated `src/components/views/{item-detail-view,item-form-view,items-view,trash-view}.tsx`, `src/components/ui/toaster.tsx`, `src/hooks/use-toast.ts`.
 - Ready for owner review. Next: Milestone 5 (Custody & stock — check-out/return/move/adjust via the action sheet).
+
+---
+Task ID: M5
+Agent: GLM (main)
+Task: Milestone 5 · Custody & stock — check-out / return / move / adjust quantity / update condition via the action sheet; a transaction written for every action; the item history timeline; "My items" filter; expected-return dates.
+
+Work Log:
+- Added `expectedReturnDate DateTime?` field to the Item schema (for check-out with expected return). Ran `db:push` — existing data preserved.
+- Created `POST /api/items/[id]/action` route — a single endpoint that handles all 5 custody actions atomically (item update + audit transaction in a `db.$transaction()`):
+  • **checkout**: sets status=checked_out, holderId (defaults to actor), currentLocationId, expectedReturnDate. Writes a `checkout` transaction with holder + from/to location + note. Only for assets.
+  • **checkin**: sets status=available, clears holderId + expectedReturnDate, resets currentLocationId to homeLocationId. Writes a `checkin` transaction. Only if currently checked out.
+  • **move**: sets currentLocationId to the destination. Writes a `move` transaction with from/to location + note.
+  • **adjust_qty**: adds delta to quantity (clamped to 0). Writes an `adjust_qty` transaction with qtyDelta + reason in the note. Only for stock items.
+  • **condition**: sets condition + maps to status (needs_service → needs_service, out_of_order → out_of_order, good → available if not checked out). Writes a `condition` transaction.
+- Updated `ItemListItem` + `ItemDetail` types to include `expectedReturnDate`, `homeLocationId`, `currentLocationId`, `holderId`. Updated the items list + detail API routes to return these fields.
+- Created `src/components/action-sheet.tsx` — a bottom-sheet modal with:
+  • Action menu: 5 actions (Check out, Return, Move, Adjust quantity, Update condition) with icons + color coding. Actions are disabled with reasons when not applicable (e.g., "Return" disabled if not checked out, "Adjust quantity" disabled for assets).
+  • Per-action forms:
+    - Checkout: holder select (defaults to "Me"), current location select, expected return date picker, note
+    - Checkin: info banner explaining the return, note
+    - Move: destination location select, note
+    - Adjust quantity: +/- stepper + direct input, live "New quantity: X" calculation, reason toggle (used/restocked/counted/damaged), note
+    - Condition: 3 buttons (Good/Needs service/Out of order) with color dots, note
+  • Every form writes the action via `/api/items/[id]/action`, invalidates the detail + items + locations queries, shows a toast, and closes the sheet.
+- Updated `ItemDetailView`:
+  • Added a teal "Action" button (with Zap icon) next to Edit/Delete
+  • Added a checked-out banner (gold) showing "Checked out by [name]" + expected return date (red if overdue) + a "Return" quick-action button
+  • Added `isOverdue()` helper for overdue detection
+  • Wired the ActionSheet with the session user + locations data
+- The history timeline already rendered all transaction types — verified it correctly displays checkout, checkin, move, adjust_qty, condition actions with the right context (person, from/to, qty delta, note).
+- "My items" filter (holder=me chip) already existed — verified it shows items checked out to the current user.
+
+VERIFICATION (all 5 actions tested via Agent Browser):
+- ✅ **Checkout**: AST-0005 → status=checked_out, holder=Sarah Tan, history shows "Checked out". DB confirms.
+- ✅ **Return**: AST-0005 → status=available, holder cleared, history shows "Returned from Sarah Tan". DB confirms.
+- ✅ **Move**: AST-0005 → currentLocation updated, history shows "Sarah Tan · Main Workshop → Tuas". DB confirms.
+- ✅ **Adjust quantity**: STK-0003 (Screws box) quantity 50 → 45 (delta -5, reason "used"), history shows "Quantity used (-5)". DB confirms quantity=45.
+- ✅ **Update condition**: AST-0005 → condition=needs_service, status=needs_service, history shows "Condition set to needs service". DB confirms.
+- ✅ **My items filter**: shows AST-0005 (checked out by Sarah Tan = current user). API: `?holder=me`.
+- ✅ **Audit trail** (AST-0005): add → edit → checkout → checkin → checkout → move → condition — all 7 transactions logged with person + timestamp + context.
+- ✅ Lint clean, no runtime errors.
+
+Stage Summary:
+- M5 acceptance met: the history answers who / what / where / when for every change. Every action writes a Transaction row atomically with the item update.
+- The action sheet is the single entry point for all custody flows — clean UX, context-aware (disables inapplicable actions with reasons).
+- Expected-return dates are stored + displayed; overdue items show in red. (M6 will surface these on the dashboard's "Needs attention" list.)
+- The "My items" filter works — items checked out to you appear in the list.
+- Produced artifacts: `prisma/schema.prisma` (expectedReturnDate), `src/app/api/items/[id]/action/route.ts`, `src/components/action-sheet.tsx`, updated `src/lib/items.ts`, `src/app/api/items/route.ts`, `src/app/api/items/[id]/route.ts`, `src/components/views/item-detail-view.tsx`.
+- Ready for owner review. Next: Milestone 6 (Dashboard — stat pills, category radar, locations panel, needs-attention list, activity feed, floating command bar).

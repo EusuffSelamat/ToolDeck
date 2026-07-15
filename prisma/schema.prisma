@@ -81,6 +81,7 @@ model Item {
   currentLocation  Location? @relation("CurrentLocation", fields: [currentLocationId], references: [id])
   holderId        String?
   holder          User?     @relation("ItemHolder", fields: [holderId], references: [id])
+  expectedReturnDate DateTime?
   photoUrl        String?
   aiConfidence    Float?
   notes           String?

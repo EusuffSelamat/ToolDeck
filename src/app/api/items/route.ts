@@ -98,6 +98,7 @@ export async function GET(req: Request) {
     homeLocationName: item.homeLocation?.name ?? null,
     holderId: item.holderId,
     holderName: item.holder?.fullName ?? null,
+    expectedReturnDate: item.expectedReturnDate,
     updatedAt: item.updatedAt,
     deletedAt: item.deletedAt,
   })) as ItemListItem[];

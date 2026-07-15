@@ -166,6 +166,7 @@ export type ItemListItem = {
   homeLocationName: string | null;
   holderId: string | null;
   holderName: string | null;
+  expectedReturnDate?: Date | null;
   updatedAt: Date;
   deletedAt?: Date | null;
 };
@@ -190,6 +191,7 @@ export type ItemDetail = {
   currentLocationName: string | null;
   holderId: string | null;
   holderName: string | null;
+  expectedReturnDate: Date | null;
   photoUrl: string | null;
   aiConfidence: number | null;
   notes: string | null;

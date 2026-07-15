@@ -160,8 +160,11 @@ export type ItemListItem = {
   minQuantity: number;
   photoUrl: string | null;
   categoryName: string | null;
+  homeLocationId: string | null;
+  currentLocationId: string | null;
   currentLocationName: string | null;
   homeLocationName: string | null;
+  holderId: string | null;
   holderName: string | null;
   updatedAt: Date;
   deletedAt?: Date | null;

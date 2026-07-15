@@ -1,17 +1,28 @@
 /**
  * Passes a location filter from the Locations view to the Items list.
- * When you tap a location card, this stores the location ID; the items view
- * reads it on mount and applies the filter.
+ * Supports two modes:
+ *   - "current": filter by currentLocationId (items currently AT this location)
+ *   - "home": filter by homeLocationId (items whose HOME is this location)
  */
 
 const KEY = "tooldeck:location-filter";
 
-export function setLocationFilter(locationId: string, locationName: string): void {
+export type LocationFilterMode = "current" | "home";
+
+export function setLocationFilter(
+  locationId: string,
+  locationName: string,
+  mode: LocationFilterMode = "current"
+): void {
   if (typeof window === "undefined") return;
-  sessionStorage.setItem(KEY, JSON.stringify({ locationId, locationName }));
+  sessionStorage.setItem(KEY, JSON.stringify({ locationId, locationName, mode }));
 }
 
-export function getLocationFilter(): { locationId: string; locationName: string } | null {
+export function getLocationFilter(): {
+  locationId: string;
+  locationName: string;
+  mode: LocationFilterMode;
+} | null {
   if (typeof window === "undefined") return null;
   const raw = sessionStorage.getItem(KEY);
   if (!raw) return null;

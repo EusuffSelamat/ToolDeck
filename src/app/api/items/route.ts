@@ -30,6 +30,7 @@ export async function GET(req: Request) {
   const categoryId = url.searchParams.get("categoryId");
   const status = url.searchParams.get("status");
   const locationId = url.searchParams.get("locationId");
+  const homeLocationId = url.searchParams.get("homeLocationId");
   const trackingType = url.searchParams.get("trackingType");
   const holderMe = url.searchParams.get("holder") === "me";
   const lowStock = url.searchParams.get("lowStock") === "true";
@@ -52,6 +53,7 @@ export async function GET(req: Request) {
   if (categoryId) where.categoryId = categoryId;
   if (status) where.status = status;
   if (locationId) where.currentLocationId = locationId;
+  if (homeLocationId) where.homeLocationId = homeLocationId;
   // lowStock implies stock type — but don't overwrite an explicit trackingType
   if (trackingType) {
     where.trackingType = trackingType;
@@ -90,8 +92,11 @@ export async function GET(req: Request) {
     minQuantity: item.minQuantity,
     photoUrl: item.photoUrl,
     categoryName: item.category?.name ?? null,
+    homeLocationId: item.homeLocationId,
+    currentLocationId: item.currentLocationId,
     currentLocationName: item.currentLocation?.name ?? null,
     homeLocationName: item.homeLocation?.name ?? null,
+    holderId: item.holderId,
     holderName: item.holder?.fullName ?? null,
     updatedAt: item.updatedAt,
     deletedAt: item.deletedAt,

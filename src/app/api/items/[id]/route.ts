@@ -172,13 +172,28 @@ export async function PATCH(
     updateData.condition = data.condition;
     changedFields.push("condition");
   }
+  // Resolve "Same as home" (null/empty) to the actual home location ID
+  // BEFORE comparing, so the update fires correctly.
+  const effectiveHomeId =
+    (data.homeLocationId !== undefined ? data.homeLocationId : existing.homeLocationId) || null;
+
   if (data.homeLocationId !== undefined && (data.homeLocationId || null) !== existing.homeLocationId) {
     updateData.homeLocationId = data.homeLocationId || null;
     changedFields.push("home location");
+    // If current location was the same as the old home, sync it to the new home
+    if (existing.currentLocationId === existing.homeLocationId || existing.currentLocationId === null) {
+      updateData.currentLocationId = data.homeLocationId || null;
+      changedFields.push("current location");
+    }
   }
-  if (data.currentLocationId !== undefined && (data.currentLocationId || null) !== existing.currentLocationId) {
-    updateData.currentLocationId = data.currentLocationId || null;
-    changedFields.push("current location");
+
+  if (data.currentLocationId !== undefined) {
+    // "Same as home" (null/empty) resolves to the home location ID
+    const resolvedCurrent = data.currentLocationId || effectiveHomeId;
+    if (resolvedCurrent !== existing.currentLocationId) {
+      updateData.currentLocationId = resolvedCurrent;
+      changedFields.push("current location");
+    }
   }
   if (data.holderId !== undefined && (data.holderId || null) !== existing.holderId) {
     updateData.holderId = data.holderId || null;

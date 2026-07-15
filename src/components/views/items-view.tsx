@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Search, Plus, Package, X, MapPin, ChevronDown, ArrowRight } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { StatusPill, type ItemStatus } from "@/components/status-pill";
-import { getLocationFilter, clearLocationFilter } from "@/lib/location-filter";
+import { getLocationFilter, clearLocationFilter, type LocationFilterMode } from "@/lib/location-filter";
 
 type FilterChip = {
   key: string;
@@ -31,14 +31,20 @@ const QUICK_CHIPS: FilterChip[] = [
 ];
 
 // Read the location filter once (before the component mounts)
-function getInitialLocationFilter(): { filters: FilterChip[]; name: string | null } {
-  if (typeof window === "undefined") return { filters: [], name: null };
+function getInitialLocationFilter(): {
+  filters: FilterChip[];
+  name: string | null;
+  mode: LocationFilterMode;
+} {
+  if (typeof window === "undefined") return { filters: [], name: null, mode: "current" };
   const lf = getLocationFilter();
-  if (!lf) return { filters: [], name: null };
+  if (!lf) return { filters: [], name: null, mode: "current" };
   clearLocationFilter();
+  const key = lf.mode === "home" ? "homeLocationId" : "locationId";
   return {
-    filters: [{ key: "locationId", label: lf.locationName, value: lf.locationId }],
+    filters: [{ key, label: lf.locationName, value: lf.locationId }],
     name: lf.locationName,
+    mode: lf.mode,
   };
 }
 
@@ -49,6 +55,7 @@ export function ItemsView() {
   const initial = useMemo(() => getInitialLocationFilter(), []);
   const [activeFilters, setActiveFilters] = useState<FilterChip[]>(initial.filters);
   const [locationFilterName, setLocationFilterName] = useState<string | null>(initial.name);
+  const [locationFilterMode, setLocationFilterMode] = useState<LocationFilterMode>(initial.mode);
   const [showLocationPicker, setShowLocationPicker] = useState(false);
 
   // Fetch locations for the picker (cached, shared with Locations view)
@@ -132,9 +139,12 @@ export function ItemsView() {
   }
 
   function selectLocation(loc: { id: string; name: string }) {
+    const key = locationFilterMode === "home" ? "homeLocationId" : "locationId";
     setActiveFilters((prev) => {
-      const filtered = prev.filter((f) => f.key !== "locationId");
-      filtered.push({ key: "locationId", label: loc.name, value: loc.id });
+      const filtered = prev.filter(
+        (f) => f.key !== "locationId" && f.key !== "homeLocationId"
+      );
+      filtered.push({ key, label: loc.name, value: loc.id });
       return filtered;
     });
     setLocationFilterName(loc.name);
@@ -142,8 +152,32 @@ export function ItemsView() {
   }
 
   function removeLocationFilter() {
-    setActiveFilters((prev) => prev.filter((f) => f.key !== "locationId"));
+    setActiveFilters((prev) =>
+      prev.filter((f) => f.key !== "locationId" && f.key !== "homeLocationId")
+    );
     setLocationFilterName(null);
+  }
+
+  function toggleLocationFilterMode() {
+    const newMode: LocationFilterMode =
+      locationFilterMode === "current" ? "home" : "current";
+    setLocationFilterMode(newMode);
+    // Swap the filter key
+    setActiveFilters((prev) => {
+      const existing = prev.find(
+        (f) => f.key === "locationId" || f.key === "homeLocationId"
+      );
+      if (!existing) return prev;
+      const filtered = prev.filter(
+        (f) => f.key !== "locationId" && f.key !== "homeLocationId"
+      );
+      filtered.push({
+        key: newMode === "home" ? "homeLocationId" : "locationId",
+        label: existing.label,
+        value: existing.value,
+      });
+      return filtered;
+    });
   }
 
   const items = data?.items ?? [];
@@ -171,24 +205,68 @@ export function ItemsView() {
       {/* Location filter banner (when a location filter is active) */}
       {locationFilterName && (
         <div
-          className="mb-3 flex items-center gap-2 rounded-xl px-3 py-2.5"
+          className="mb-3 rounded-xl px-3 py-2.5"
           style={{
             background: "rgba(14,79,74,0.3)",
             border: "1px solid rgba(25,227,196,0.25)",
           }}
         >
-          <MapPin size={14} style={{ color: "var(--color-teal)" }} />
-          <span className="flex-1 text-sm" style={{ color: "var(--color-text-hi)" }}>
-            {locationFilterName}
-          </span>
-          <button
-            onClick={removeLocationFilter}
-            className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-[rgba(25,227,196,0.1)]"
-            style={{ color: "var(--color-text-mid)" }}
-            aria-label="Remove location filter"
+          <div className="flex items-center gap-2">
+            <MapPin size={14} style={{ color: "var(--color-teal)" }} />
+            <span className="flex-1 text-sm" style={{ color: "var(--color-text-hi)" }}>
+              {locationFilterName}
+            </span>
+            <button
+              onClick={removeLocationFilter}
+              className="flex h-6 w-6 items-center justify-center rounded-full hover:bg-[rgba(25,227,196,0.1)]"
+              style={{ color: "var(--color-text-mid)" }}
+              aria-label="Remove location filter"
+            >
+              <X size={13} />
+            </button>
+          </div>
+          {/* Current vs Home toggle */}
+          <div
+            className="mt-2 flex gap-1 rounded-full p-0.5"
+            style={{ background: "rgba(3,10,10,0.5)" }}
           >
-            <X size={13} />
-          </button>
+            <button
+              onClick={() => {
+                if (locationFilterMode !== "current") toggleLocationFilterMode();
+              }}
+              className="flex-1 rounded-full py-1.5 text-xs font-medium transition-all"
+              style={{
+                background:
+                  locationFilterMode === "current"
+                    ? "var(--color-teal)"
+                    : "transparent",
+                color:
+                  locationFilterMode === "current"
+                    ? "#04211d"
+                    : "var(--color-text-mid)",
+              }}
+            >
+              Currently here
+            </button>
+            <button
+              onClick={() => {
+                if (locationFilterMode !== "home") toggleLocationFilterMode();
+              }}
+              className="flex-1 rounded-full py-1.5 text-xs font-medium transition-all"
+              style={{
+                background:
+                  locationFilterMode === "home"
+                    ? "var(--color-teal)"
+                    : "transparent",
+                color:
+                  locationFilterMode === "home"
+                    ? "#04211d"
+                    : "var(--color-text-mid)",
+              }}
+            >
+              Calls this home
+            </button>
+          </div>
         </div>
       )}
 
@@ -502,7 +580,11 @@ function ItemCard({
     status: ItemStatus;
     photoUrl: string | null;
     categoryName: string | null;
+    homeLocationId: string | null;
+    currentLocationId: string | null;
     currentLocationName: string | null;
+    homeLocationName: string | null;
+    holderId: string | null;
     holderName: string | null;
     quantity: number;
     minQuantity: number;
@@ -511,6 +593,12 @@ function ItemCard({
 }) {
   const isLowStock =
     item.trackingType === "stock" && item.quantity <= item.minQuantity;
+
+  // "Away from home" = home is set, and either current differs from home,
+  // or the item is checked out (holder set)
+  const isAwayFromHome =
+    item.homeLocationId !== null &&
+    (item.currentLocationId !== item.homeLocationId || item.holderId !== null);
 
   return (
     <button
@@ -561,9 +649,19 @@ function ItemCard({
           style={{ color: "var(--color-text-mid)" }}
         >
           {item.brand ? `${item.brand} · ` : ""}
-          {item.currentLocationName ?? "No location"}
-          {item.holderName ? ` · ${item.holderName}` : ""}
+          {item.holderName
+            ? `Checked out by ${item.holderName}`
+            : item.currentLocationName ?? "No location"}
         </p>
+        {/* Away-from-home tracking line */}
+        {isAwayFromHome && item.homeLocationName && (
+          <p
+            className="truncate text-[10px]"
+            style={{ color: "var(--color-gold)" }}
+          >
+            Home: {item.homeLocationName}
+          </p>
+        )}
       </div>
 
       {/* Status pill */}

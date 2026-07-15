@@ -4,7 +4,10 @@ import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
 import { z } from "zod";
 
-// GET /api/locations — list all locations with item counts + category breakdown.
+// GET /api/locations — list all locations with:
+//   - itemCount: items currently at this location
+//   - homeItemCount: items whose home is this location
+//   - awayItems: items whose home is here but are currently elsewhere
 export async function GET() {
   const session = await requireAuth();
   if (!session) {
@@ -23,21 +26,58 @@ export async function GET() {
           trackingType: true,
         },
       },
+      itemsHome: {
+        where: { isDeleted: false },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          photoUrl: true,
+          status: true,
+          holderId: true,
+          holder: { select: { fullName: true } },
+          homeLocationId: true,
+          currentLocationId: true,
+          currentLocation: { select: { name: true } },
+        },
+      },
     },
   });
 
   const result = locations.map((loc) => {
-    const items = loc.itemsCurrent;
-    const itemCount = items.length;
+    const currentItems = loc.itemsCurrent;
+    const homeItems = loc.itemsHome;
 
-    // Category breakdown: { categoryName: count }
+    // Items whose home is here but are currently elsewhere (or checked out)
+    const awayItems = homeItems.filter(
+      (item) => item.currentLocationId !== loc.id || item.holderId
+    );
+
+    // Group away items by where they are now
+    const awaySummary: Record<string, number> = {};
+    for (const item of awayItems) {
+      let key: string;
+      if (item.holderId && item.holder?.fullName) {
+        key = `Checked out · ${item.holder.fullName}`;
+      } else if (item.currentLocation?.name) {
+        key = item.currentLocation.name;
+      } else {
+        key = "Unknown location";
+      }
+      awaySummary[key] = (awaySummary[key] ?? 0) + 1;
+    }
+
+    const awayBreakdown = Object.entries(awaySummary)
+      .map(([location, count]) => ({ location, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Category breakdown for items currently here
     const categoryBreakdown: Record<string, number> = {};
-    for (const item of items) {
+    for (const item of currentItems) {
       const cat = item.category?.name ?? "Uncategorised";
       categoryBreakdown[cat] = (categoryBreakdown[cat] ?? 0) + 1;
     }
 
-    // Sort categories by count desc, take top 5
     const topCategories = Object.entries(categoryBreakdown)
       .sort(([, a], [, b]) => b - a)
       .slice(0, 5)
@@ -47,7 +87,10 @@ export async function GET() {
       id: loc.id,
       name: loc.name,
       kind: loc.kind,
-      itemCount,
+      itemCount: currentItems.length,
+      homeItemCount: homeItems.length,
+      awayCount: awayItems.length,
+      awayBreakdown,
       topCategories,
     };
   });

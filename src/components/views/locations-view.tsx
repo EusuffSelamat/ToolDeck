@@ -14,6 +14,8 @@ import {
   Truck,
   ArrowRight,
   Loader2,
+  Home,
+  LogOut,
 } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
@@ -24,6 +26,9 @@ type LocationData = {
   name: string;
   kind: string;
   itemCount: number;
+  homeItemCount: number;
+  awayCount: number;
+  awayBreakdown: Array<{ location: string; count: number }>;
   topCategories: Array<{ name: string; count: number }>;
 };
 
@@ -67,7 +72,14 @@ export function LocationsView() {
   }
 
   function handleTapLocation(loc: LocationData) {
-    setLocationFilter(loc.id, loc.name);
+    // Default to "currently here" when tapping the card
+    setLocationFilter(loc.id, loc.name, "current");
+    navigate({ name: "items" });
+  }
+
+  function handleTapHome(loc: LocationData) {
+    // Tap the "home" section to see items whose home is here
+    setLocationFilter(loc.id, loc.name, "home");
     navigate({ name: "items" });
   }
 
@@ -135,7 +147,7 @@ export function LocationsView() {
             const Icon = KIND_ICON[loc.kind] ?? MapPin;
             return (
               <div key={loc.id} className="glass-card overflow-hidden">
-                {/* Tap-to-filter target */}
+                {/* Main tap target — "currently here" */}
                 <button
                   onClick={() => handleTapLocation(loc)}
                   className="flex w-full items-center gap-3 p-4 text-left transition-colors hover:bg-[rgba(25,227,196,0.04)]"
@@ -164,18 +176,71 @@ export function LocationsView() {
                       {loc.name}
                     </p>
                     <p className="micro-label mt-0.5">
-                      {loc.kind} · {loc.itemCount}{" "}
-                      {loc.itemCount === 1 ? "item" : "items"}
+                      {loc.kind}
                     </p>
                   </div>
 
-                  <ArrowRight
-                    size={16}
-                    style={{ color: "var(--color-text-low)" }}
-                  />
+                  <div className="flex flex-col items-end gap-0.5">
+                    <span
+                      className="font-display text-lg font-semibold"
+                      style={{ color: "var(--color-teal)" }}
+                    >
+                      {loc.itemCount}
+                    </span>
+                    <span className="micro-label">here now</span>
+                  </div>
                 </button>
 
-                {/* Category breakdown bar */}
+                {/* Home + away tracking section */}
+                {loc.homeItemCount > 0 && (
+                  <div
+                    className="border-t px-4 py-3"
+                    style={{ borderColor: "var(--color-border)" }}
+                  >
+                    <button
+                      onClick={() => handleTapHome(loc)}
+                      className="flex w-full items-center gap-2 text-left transition-colors hover:text-[var(--color-teal)]"
+                    >
+                      <Home size={13} style={{ color: "var(--color-gold)" }} />
+                      <span
+                        className="text-xs"
+                        style={{ color: "var(--color-text-mid)" }}
+                      >
+                        {loc.homeItemCount} {loc.homeItemCount === 1 ? "item" : "items"} call this home
+                      </span>
+                      {loc.awayCount > 0 && (
+                        <span
+                          className="ml-auto flex items-center gap-1 text-[10px] font-semibold"
+                          style={{ color: "var(--color-gold)" }}
+                        >
+                          <LogOut size={10} /> {loc.awayCount} away
+                        </span>
+                      )}
+                      <ArrowRight size={12} style={{ color: "var(--color-text-low)" }} />
+                    </button>
+
+                    {/* Away breakdown — where are the items? */}
+                    {loc.awayCount > 0 && loc.awayBreakdown.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {loc.awayBreakdown.slice(0, 4).map((away) => (
+                          <span
+                            key={away.location}
+                            className="rounded-full px-2 py-0.5 text-[10px]"
+                            style={{
+                              background: "rgba(201,160,99,0.1)",
+                              color: "var(--color-gold)",
+                              border: "1px solid rgba(201,160,99,0.2)",
+                            }}
+                          >
+                            {away.location} · {away.count}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Category breakdown bar (for items currently here) */}
                 {loc.itemCount > 0 && loc.topCategories.length > 0 && (
                   <div className="px-4 pb-3">
                     <div className="flex h-1.5 w-full overflow-hidden rounded-full" style={{ background: "rgba(6,17,17,0.6)" }}>

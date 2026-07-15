@@ -12,7 +12,20 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    // Read error from URL query param (set by NextAuth on failed sign-in
+    // when using redirect: true)
+    if (typeof window === "undefined") return null;
+    const params = new URLSearchParams(window.location.search);
+    const errParam = params.get("error");
+    if (errParam) {
+      // Clean the URL
+      window.history.replaceState({}, "", window.location.pathname);
+      if (errParam === "CredentialsSignin") return "Wrong email or password.";
+      return "Sign-in failed. Please try again.";
+    }
+    return null;
+  });
   const { toast } = useToast();
 
   async function handleSubmit(e: React.FormEvent) {
@@ -39,27 +52,24 @@ export function AuthScreen() {
         });
       }
 
-      const result = await signIn("credentials", {
+      // Use redirect: true — this does a full form submission (not fetch),
+      // which reliably sets the session cookie. With redirect: false, the
+      // fetch-based approach uses redirect: "manual" which returns an
+      // opaqueredirect response that doesn't process Set-Cookie headers
+      // in some browsers.
+      //
+      // On success: browser navigates to "/" and useSession picks up the
+      // new session cookie automatically.
+      // On failure: browser navigates to "/?error=CredentialsSignin" and
+      // the useEffect above shows the error.
+      await signIn("credentials", {
         email,
         password,
-        redirect: false,
+        redirect: true,
+        callbackUrl: "/",
       });
-
-      if (!result || result.error) {
-        setError(
-          mode === "signup"
-            ? "Account created, but sign-in failed. Try logging in."
-            : "Wrong email or password."
-        );
-        setBusy(false);
-        return;
-      }
-
-      // Sign-in succeeded — the session cookie is now set.
-      // Force a full page reload so useSession picks up the new session
-      // immediately (it doesn't auto-poll, so without this the spinner
-      // would spin forever waiting for the session to update).
-      window.location.reload();
+      // This line may not be reached — the browser navigates away on success.
+      // But just in case, keep the spinner on.
     } catch {
       setError("Something went wrong. Please try again.");
       setBusy(false);

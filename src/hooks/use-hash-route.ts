@@ -3,29 +3,44 @@
 import { useEffect, useState, useCallback } from "react";
 
 /**
- * Lightweight hash-based router. The gateway only exposes `/`, so all views
- * live under `/#/…`. This keeps the browser back button, refresh, and
- * deep-linking working. On Vercel these can become real routes with no logic
- * changes.
+ * Hash-based router supporting parameterized routes.
+ * All views live under `/#/…` (single exposed `/` route).
  *
- * Routes (M1):
- *   #/            → dashboard
- *   #/items       → items list
- *   #/scan        → scan (hero)
- *   #/locations   → locations
- *   #/activity    → activity feed
+ * Routes (M1–M3):
+ *   #/                    → dashboard
+ *   #/items               → items list
+ *   #/items/new           → add item form
+ *   #/items/:id           → item detail
+ *   #/items/:id/edit      → edit item form
+ *   #/scan                → scan (hero)
+ *   #/locations           → locations
+ *   #/activity            → activity feed
+ *   #/trash               → recently deleted
  */
 export type Route =
   | { name: "dashboard" }
   | { name: "items" }
+  | { name: "item-new" }
+  | { name: "item-detail"; id: string }
+  | { name: "item-edit"; id: string }
   | { name: "scan" }
   | { name: "locations" }
-  | { name: "activity" };
+  | { name: "activity" }
+  | { name: "trash" };
 
 export function parseHash(hash: string): Route {
   const clean = hash.replace(/^#\/?/, "").trim();
-  switch (clean) {
+  const parts = clean.split("/").filter(Boolean);
+
+  if (parts.length === 0) return { name: "dashboard" };
+
+  switch (parts[0]) {
     case "items":
+      if (parts.length === 1) return { name: "items" };
+      if (parts[1] === "new") return { name: "item-new" };
+      if (parts.length === 3 && parts[2] === "edit")
+        return { name: "item-edit", id: parts[1] };
+      if (parts.length === 2) return { name: "item-detail", id: parts[1] };
       return { name: "items" };
     case "scan":
       return { name: "scan" };
@@ -33,14 +48,36 @@ export function parseHash(hash: string): Route {
       return { name: "locations" };
     case "activity":
       return { name: "activity" };
+    case "trash":
+      return { name: "trash" };
     default:
       return { name: "dashboard" };
   }
 }
 
 export function routeToHash(route: Route): string {
-  if (route.name === "dashboard") return "#/";
-  return `#/${route.name}`;
+  switch (route.name) {
+    case "dashboard":
+      return "#/";
+    case "items":
+      return "#/items";
+    case "item-new":
+      return "#/items/new";
+    case "item-detail":
+      return `#/items/${route.id}`;
+    case "item-edit":
+      return `#/items/${route.id}/edit`;
+    case "scan":
+      return "#/scan";
+    case "locations":
+      return "#/locations";
+    case "activity":
+      return "#/activity";
+    case "trash":
+      return "#/trash";
+    default:
+      return "#/";
+  }
 }
 
 export function useHashRoute(): [Route, (r: Route) => void] {
@@ -63,6 +100,8 @@ export function useHashRoute(): [Route, (r: Route) => void] {
     } else {
       setRoute(r);
     }
+    // Scroll to top on navigation
+    window.scrollTo(0, 0);
   }, []);
 
   return [route, navigate];

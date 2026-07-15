@@ -73,3 +73,47 @@ Stage Summary:
 - Architecture notes for M3: item codes (`AST-####`/`STK-####`) assigned via `nextItemCode()` in a transaction; soft delete via `isDeleted` flag (never `db.item.delete()`); every create/update writes a `Transaction` row (audit trail); photos to `public/item-photos/` with the item code as filename.
 - Produced artifacts: `prisma/schema.prisma` (full §5), `scripts/seed.ts`, `src/lib/require-auth.ts`, `src/app/api/meta/route.ts`.
 - Ready for owner review against M2 acceptance criteria before starting M3 (Items core).
+
+---
+Task ID: M3
+Agent: GLM (main)
+Task: Milestone 3 · Items core — items list with search + filter chips; item detail page; manual add/edit form; photo capture → compress → upload; soft delete with undo toast and "Recently deleted" restore view.
+
+Work Log:
+- Created `src/lib/items.ts` — shared library: zod validation schemas (`itemCreateSchema`, `itemUpdateSchema`), `nextItemCode()` (queries max AST-/STK- code + 1, replaces Postgres sequences), `savePhoto()` (writes compressed base64 JPEG to `public/item-photos/{code}.jpg`, replaces Supabase Storage), TypeScript types for API responses (`ItemListItem`, `ItemDetail`, `TxnListItem`), and constants for tracking types/statuses/conditions/txn actions.
+- Created 5 API routes (all auth-gated via `requireAuth()`):
+  • `GET/POST /api/items` — list with search (LIKE on name/brand/model/code/serialNo) + filters (category, status, location, trackingType, holder=me, lowStock, deleted); create with code assignment + photo save + 'add' transaction
+  • `GET/PATCH/DELETE /api/items/[id]` — detail with relations + transaction history; edit (partial update with 'edit' transaction); soft delete (isDeleted=true + 'delete' transaction)
+  • `POST /api/items/[id]/restore` — restore within 30-day window (enforced server-side) + 'restore' transaction
+  • `GET /api/items/deleted` — recently deleted items (within 30-day window)
+- Updated hash router (`src/hooks/use-hash-route.ts`) for parameterized routes: `#/items`, `#/items/new`, `#/items/:id`, `#/items/:id/edit`, `#/trash`. Scroll-to-top on navigation.
+- Created `src/lib/compress-image.ts` — client-side canvas compression per §4: max edge 1280px, JPEG quality 0.8. Returns base64 data URL.
+- Updated `src/components/providers.tsx` — added TanStack Query `QueryClientProvider` (30s staleTime, 1 retry, no refetchOnWindowFocus) alongside `SessionProvider`.
+- Created `ItemsView` — search bar (200ms debounce), filter chips (status, tracking type, my items, low stock — toggleable, single-value per key), item cards (thumbnail/photo, code, name, brand, location/holder line, status pill, low-stock badge), loading skeletons, empty states ("No items yet" / "No matches"), total count.
+- Created `ItemDetailView` — photo hero with status pill overlay + AI confidence badge, spec grid (code, brand, model, serial, category, type, quantity/min, condition, home/current location, holder), notes section, history timeline (numbered chips, reverse-chrono, human-readable action labels + person + relative dates), edit/delete buttons. Delete shows undo toast with `<ToastAction>` that calls restore API + invalidates queries.
+- Created `ItemFormView` (add + edit) — photo capture via `<input type="file" accept="image/*" capture="environment">` with client-side compression + preview + remove; tracking type toggle (asset/stock, shows/hides quantity fields); all fields (name, brand, model, serial, category select, condition select, home/current location selects, notes); pre-fills from existing item when editing; validation + loading state; save navigates to detail with toast.
+- Created `TrashView` — recently deleted items with 30-day window note, restore buttons, empty state.
+- Updated `AppShell` to route all new views. Updated `ScanView` with "Add manually" CTA linking to the form.
+- Fixed a React runtime error: the shadcn `useToast` hook expects `action` as a `ToastActionElement` (React element), not a plain `{label, onClick}` object. Changed the delete handler to pass `<ToastAction altText="Undo" onClick={...}>Undo</ToastAction>`.
+- Lint: clean (0 errors, 0 warnings).
+- Self-verified with Agent Browser (iPhone 14 viewport):
+  • Sign in → Items → Add item → fill form (name, brand, model, category) → save → navigates to detail with "Item added AST-0001" toast ✅
+  • Detail view: photo hero, spec rows, status pill, edit/delete buttons, history timeline shows "Added to inventory" ✅ (VLM-confirmed on-theme)
+  • Edit → add serial + notes → save → "Item updated" toast → history shows "Added" + "Details edited" ✅
+  • Delete → "Item deleted" toast with Undo button → navigates to items list (empty) ✅
+  • Undo button renders correctly (no React errors after fix) ✅
+  • Recently Deleted view → shows all deleted items with Restore buttons ✅ (VLM-confirmed on-theme)
+  • Restore → "Restored" toast → item removed from trash → reappears in items list ✅
+  • Search: "wrench" finds item, "zzzzz" shows "No matches" empty state, clear filter restores list ✅
+  • Audit trail verified in DB: add → delete → restore transactions all logged with person + timestamp + note ✅
+  • No console errors, no runtime errors after toast fix ✅
+
+Stage Summary:
+- M3 acceptance met: full CRUD works from a phone-sized viewport; photos persist (saved to `public/item-photos/`); deletes are soft (isDeleted flag) with undo toast + 30-day restore window; every create/edit/delete writes an audit `Transaction` row.
+- The `AST-####`/`STK-####` code assignment works correctly (first asset = AST-0001, increments). Tracking type is immutable after creation (not in update schema). Current location defaults to home location if not specified.
+- TanStack Query is now wired up with 30s staleTime — M4+ (scan/AI) and M5+ (custody) will use it for cache invalidation after mutations.
+- Photo compression runs client-side before upload (max 1280px, JPEG 0.8) per §4 — the same compressed image will feed the vision API in M4.
+- Architecture notes for M4: the `/api/identify` route will call `z-ai-web-dev-sdk` server-side, return structured JSON per §6, run dedupe (JS trigram Jaccard) against existing items, and the Scan screen will call it. The form already accepts `photoBase64` — M4 just adds the AI pre-fill path before the form opens.
+- Architecture notes for M5: the action sheet (check-out/return/move/adjust) will write `Transaction` rows with the appropriate `action` enum and update `Item` fields (holderId, currentLocationId, quantity, status). The history timeline in `ItemDetailView` already renders all action types.
+- Produced artifacts: `src/lib/items.ts`, `src/lib/compress-image.ts`, `src/app/api/items/route.ts`, `src/app/api/items/[id]/route.ts`, `src/app/api/items/[id]/restore/route.ts`, `src/app/api/items/deleted/route.ts`, `src/components/views/{items-view,item-detail-view,item-form-view,trash-view}.tsx`, updated `src/hooks/use-hash-route.ts`, `src/components/providers.tsx`, `src/components/app-shell.tsx`, `src/components/views/scan-view.tsx`.
+- Ready for owner review against M3 acceptance criteria before starting M4 (Camera + AI — the magic).

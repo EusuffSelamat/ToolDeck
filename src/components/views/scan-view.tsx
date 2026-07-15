@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ScanLine, Camera, Sparkles } from "lucide-react";
+import { ScanLine, Camera, Sparkles, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useHashRoute } from "@/hooks/use-hash-route";
 
 const TIPS = [
   "Point at any tool — I'll do the rest.",
@@ -15,6 +16,7 @@ const TIPS = [
 export function ScanView() {
   const [tip, setTip] = useState(0);
   const { toast } = useToast();
+  const [, navigate] = useHashRoute();
 
   useEffect(() => {
     const id = setInterval(() => setTip((t) => (t + 1) % TIPS.length), 3200);
@@ -89,6 +91,15 @@ export function ScanView() {
         aria-label="Capture"
       >
         <ScanLine size={30} strokeWidth={2.2} />
+      </button>
+
+      {/* Add manually CTA */}
+      <button
+        type="button"
+        onClick={() => navigate({ name: "item-new" })}
+        className="btn-ghost-teal mt-5 flex h-10 items-center gap-2 px-5 text-sm"
+      >
+        <Pencil size={15} /> Add manually
       </button>
 
       {/* last scans */}

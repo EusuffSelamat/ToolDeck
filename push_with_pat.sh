@@ -4,7 +4,7 @@
 cd "$(dirname "$0")" || exit
 
 echo "========================================"
-echo " Push to EXISTING GitHub Repository (PAT)"
+echo " Force Push to GitHub Repository (PAT)  "
 echo "========================================"
 
 # Ask for GitHub username and repository name
@@ -13,7 +13,7 @@ read -p "Enter the name of the EXISTING repository: " REPO_NAME
 
 # Securely ask for the Personal Access Token (typing will be hidden)
 read -s -p "Enter your GitHub Personal Access Token: " GITHUB_TOKEN
-echo "" # Print a newline because -s suppresses the Enter key newline
+echo "" # Print a newline
 
 # Basic validation
 if [ -z "$GITHUB_USERNAME" ] || [ -z "$REPO_NAME" ] || [ -z "$GITHUB_TOKEN" ]; then
@@ -21,7 +21,7 @@ if [ -z "$GITHUB_USERNAME" ] || [ -z "$REPO_NAME" ] || [ -z "$GITHUB_TOKEN" ]; t
     exit 1
 fi
 
-# Construct the remote URL with the token embedded for authentication
+# Construct the remote URL with the token embedded
 REPO_URL="https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/${GITHUB_USERNAME}/${REPO_NAME}.git"
 
 # 1. Initialize Git locally if it hasn't been initialized already
@@ -53,13 +53,10 @@ else
     git remote add origin "$REPO_URL"
 fi
 
-# 6. Pull existing files from GitHub and explicitly merge them
-echo "Syncing with remote repository..."
-git pull origin main --allow-unrelated-histories --no-edit --no-rebase || echo "Note: Could not pull. (This is normal if the remote repository is completely empty)."
-
-# 7. Push the files to GitHub
-echo "Pushing files to GitHub..."
-git push -u origin main
+# 6. Force Push the files to GitHub
+# The -f flag overwrites the remote repo to perfectly match your local folder
+echo "Force pushing files to GitHub..."
+git push -u -f origin main
 
 echo "========================================"
-echo "Process complete! Your files are now on GitHub."
+echo "Process complete! Your GitHub repo now perfectly matches your local folder."

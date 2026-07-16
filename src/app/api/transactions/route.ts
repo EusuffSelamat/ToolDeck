@@ -90,6 +90,10 @@ export async function DELETE(req: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Only admins can purge activity logs
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required to delete activity logs." }, { status: 403 });
+  }
 
   const url = new URL(req.url);
   const before = url.searchParams.get("before");

@@ -8,6 +8,7 @@ import { StatusPill, type ItemStatus } from "@/components/status-pill";
 import { getLocationFilter, clearLocationFilter, type LocationFilterMode } from "@/lib/location-filter";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
 import { ExportDialog } from "@/components/export-dialog";
+import { useRole } from "@/hooks/use-role";
 
 type FilterChip = {
   key: string;
@@ -51,6 +52,8 @@ function getInitialLocationFilter(): {
 
 export function ItemsView() {
   const [, navigate] = useHashRoute();
+  const role = useRole();
+  const isAdmin = role === "admin";
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const initial = useMemo(() => getInitialLocationFilter(), []);
@@ -201,7 +204,8 @@ export function ItemsView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Export dropdown */}
+          {/* Export dropdown — admin only */}
+          {isAdmin && (
           <div className="relative">
             <button
               type="button"
@@ -265,6 +269,7 @@ export function ItemsView() {
               </>
             )}
           </div>
+          )}
           <button
             type="button"
             onClick={() => navigate({ name: "item-new" })}

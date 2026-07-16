@@ -24,11 +24,14 @@ import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
 import { ActionSheet } from "@/components/action-sheet";
 import { MaintenanceSection } from "@/components/maintenance-section";
+import { useRole } from "@/hooks/use-role";
 
 export function ItemDetailView({ id }: { id: string }) {
   const [, navigate] = useHashRoute();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const role = useRole();
+  const isAdmin = role === "admin";
   const { data: session } = useSession();
   const [showActions, setShowActions] = useState(false);
 
@@ -227,17 +230,19 @@ export function ItemDetailView({ id }: { id: string }) {
             >
               <Zap size={15} /> Action
             </button>
-            <button
-              onClick={handleDelete}
-              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[rgba(224,86,107,0.1)]"
-              style={{
-                border: "1px solid rgba(224,86,107,0.3)",
-                color: "var(--color-danger)",
-              }}
-              aria-label="Delete"
-            >
-              <Trash2 size={16} />
-            </button>
+            {isAdmin && (
+              <button
+                onClick={handleDelete}
+                className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[rgba(224,86,107,0.1)]"
+                style={{
+                  border: "1px solid rgba(224,86,107,0.3)",
+                  color: "var(--color-danger)",
+                }}
+                aria-label="Delete"
+              >
+                <Trash2 size={16} />
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -435,6 +440,7 @@ export function ItemDetailView({ id }: { id: string }) {
               id: (session.user as { id?: string }).id ?? "",
               name: session.user.name ?? "User",
             },
+            role,
           }}
           onClose={() => setShowActions(false)}
         />

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Activity as ActivityIcon, Package, X, Trash2, ChevronDown, AlertTriangle, Loader2 } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
+import { useRole } from "@/hooks/use-role";
 import { StatusPill } from "@/components/status-pill";
 
 type Transaction = {
@@ -57,6 +58,8 @@ export function ActivityView() {
   const [, navigate] = useHashRoute();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const role = useRole();
+  const isAdmin = role === "admin";
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [limit, setLimit] = useState("100");
   const [showPurgeMenu, setShowPurgeMenu] = useState(false);
@@ -157,7 +160,8 @@ export function ActivityView() {
             />
           </div>
 
-          {/* Purge dropdown */}
+          {/* Purge dropdown — admin only */}
+          {isAdmin && (
           <div className="relative">
             <button
               onClick={() => setShowPurgeMenu(!showPurgeMenu)}
@@ -200,6 +204,7 @@ export function ActivityView() {
               </>
             )}
           </div>
+          )}
         </div>
       </div>
 

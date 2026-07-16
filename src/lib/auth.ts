@@ -22,7 +22,7 @@ export const authOptions: NextAuthOptions = {
           if (!user) return null;
           const ok = await bcrypt.compare(credentials.password, user.passwordHash);
           if (!ok) return null;
-          return { id: user.id, name: user.fullName, email: user.email };
+          return { id: user.id, name: user.fullName, email: user.email, role: user.role };
         } catch (e) {
           console.error("Auth authorize error:", e);
           return null;
@@ -35,6 +35,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = user.id;
         token.name = user.name;
+        token.role = (user as { role?: string }).role ?? "worker";
       }
       return token;
     },
@@ -42,12 +43,11 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as { id?: string }).id = token.id as string;
         session.user.name = (token.name as string) ?? session.user.name;
+        (session.user as { role?: string }).role = (token.role as string) ?? "worker";
       }
       return session;
     },
   },
-  // We render the auth UI inside the single `/` route (hash-based), so point
-  // NextAuth at the root for any internal redirects.
   pages: { signIn: "/" },
   trustHost: true,
 };

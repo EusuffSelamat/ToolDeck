@@ -20,6 +20,7 @@ import {
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
 import { setLocationFilter } from "@/lib/location-filter";
+import { useRole } from "@/hooks/use-role";
 
 type LocationData = {
   id: string;
@@ -48,6 +49,8 @@ export function LocationsView() {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const role = useRole();
+  const isAdmin = role === "admin";
 
   const { data, isLoading } = useQuery({
     queryKey: ["locations"],
@@ -97,6 +100,7 @@ export function LocationsView() {
             {locations.length} {locations.length === 1 ? "location" : "locations"}
           </p>
         </div>
+        {isAdmin && (
         <button
           type="button"
           onClick={() => {
@@ -108,6 +112,7 @@ export function LocationsView() {
         >
           <Plus size={16} /> Add
         </button>
+        )}
       </div>
 
       {isLoading ? (
@@ -173,6 +178,7 @@ export function LocationsView() {
                   setShowForm(true);
                 }}
                 onDelete={handleDelete}
+                isAdmin={isAdmin}
               />
             ));
           })()}
@@ -417,6 +423,7 @@ function LocationTreeNode({
   onTapHome,
   onEdit,
   onDelete,
+  isAdmin,
 }: {
   loc: LocationData;
   childrenByParent: Map<string, LocationData[]>;
@@ -425,6 +432,7 @@ function LocationTreeNode({
   onTapHome: (loc: LocationData) => void;
   onEdit: (id: string) => void;
   onDelete: (id: string, name: string) => void;
+  isAdmin: boolean;
 }) {
   const children = childrenByParent.get(loc.id) ?? [];
 
@@ -436,6 +444,7 @@ function LocationTreeNode({
         onTapHome={onTapHome}
         onEdit={() => onEdit(loc.id)}
         onDelete={onDelete}
+        isAdmin={isAdmin}
       />
       {children.length > 0 && (
         <div
@@ -455,6 +464,7 @@ function LocationTreeNode({
               onTapHome={onTapHome}
               onEdit={onEdit}
               onDelete={onDelete}
+              isAdmin={isAdmin}
             />
           ))}
         </div>
@@ -470,12 +480,14 @@ function LocationCard({
   onTapHome,
   onEdit,
   onDelete,
+  isAdmin,
 }: {
   loc: LocationData;
   onTapLocation: (loc: LocationData) => void;
   onTapHome: (loc: LocationData) => void;
   onEdit: () => void;
   onDelete: (id: string, name: string) => void;
+  isAdmin: boolean;
 }) {
   const Icon = KIND_ICON[loc.kind] ?? MapPin;
   return (
@@ -599,7 +611,8 @@ function LocationCard({
         </div>
       )}
 
-      {/* Edit/Delete actions */}
+      {/* Edit/Delete actions — admin only */}
+      {isAdmin && (
       <div className="flex border-t" style={{ borderColor: "var(--color-border)" }}>
         <button
           onClick={onEdit}
@@ -617,6 +630,7 @@ function LocationCard({
           <Trash2 size={13} /> Delete
         </button>
       </div>
+      )}
     </div>
   );
 }

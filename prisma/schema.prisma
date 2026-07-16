@@ -21,6 +21,7 @@ model User {
   email        String   @unique
   fullName     String
   passwordHash String
+  role         String   @default("worker") // 'admin' | 'worker'
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

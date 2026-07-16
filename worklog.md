@@ -570,3 +570,53 @@ VERIFICATION:
 - ✅ Themed export completes successfully (3 sheets, no errors)
 - ✅ Lint clean
 - ✅ Zero remaining references to minQuantity/lowStock in the codebase
+
+---
+Task ID: ROLE-BASED-ACCESS
+Agent: GLM (main)
+Task: Add role-based access control — admin vs general worker. Workers can only add items, scan, move, return, check-out. Admins can do everything. Admin account created directly in DB (not via UI).
+
+Work Log:
+- Added `role String @default("worker")` to the User model in Prisma schema. Ran db:push. All existing users default to "worker".
+- Created the `eusuff` admin account directly in the DB: `eusuff@admin.com` / `eusuff` / role: `admin`. Admin accounts cannot be created via the app UI — only via direct DB manipulation.
+- Updated `src/lib/auth.ts` — the `authorize` function now returns `role` from the user record. The `jwt` callback stores `role` in the token. The `session` callback exposes `role` on `session.user`.
+- Updated `src/lib/require-auth.ts` — `requireAuth()` now returns the typed `SessionUser` with `role`. Added `requireAdmin()` helper for admin-only routes.
+- Created `src/hooks/use-role.ts` — client-side hook that reads the role from `useSession()`. Returns `"admin"` or `"worker"` (safe default: worker).
+
+**API Route Permissions (server-enforced):**
+| Route | Worker | Admin |
+|---|---|---|
+| GET (all) | ✅ | ✅ |
+| POST /api/items (add) | ✅ | ✅ |
+| POST /api/identify (scan) | ✅ | ✅ |
+| POST /api/items/[id]/action (checkout/checkin/move) | ✅ | ✅ |
+| POST /api/items/[id]/action (adjust_qty/condition) | ❌ 403 | ✅ |
+| POST /api/items/[id]/maintenance | ✅ | ✅ |
+| PATCH /api/items/[id] (edit details) | ❌ 403 | ✅ |
+| DELETE /api/items/[id] (soft delete) | ❌ 403 | ✅ |
+| POST /api/items/[id]/restore | ❌ 403 | ✅ |
+| DELETE /api/transactions (purge) | ❌ 403 | ✅ |
+| POST/PATCH/DELETE /api/locations | ❌ 403 | ✅ |
+| POST/PATCH/DELETE /api/categories | ❌ 403 | ✅ |
+
+**UI Permissions (client-enforced, hidden for workers):**
+| Feature | Worker | Admin |
+|---|---|---|
+| Scan + Add items | ✅ | ✅ |
+| Check out / Return / Move | ✅ | ✅ |
+| Edit details action | Hidden | ✅ |
+| Adjust quantity action | Hidden | ✅ |
+| Update condition action | Hidden | ✅ |
+| Delete item button | Hidden | ✅ |
+| Export button (Items view) | Hidden | ✅ |
+| Purge button (Activity view) | Hidden | ✅ |
+| Categories editor (Settings) | Hidden | ✅ |
+| Export section (Settings) | Hidden | ✅ |
+| Recently deleted (Settings) | Hidden | ✅ |
+| Location add/edit/delete | Hidden | ✅ |
+| Settings footer label | "Worker" | "Admin" |
+
+VERIFICATION:
+- ✅ Admin (eusuff@admin.com): sees Action + Delete on item detail, all 6 actions in action sheet, export button, purge button, categories editor, location add/edit/delete
+- ✅ Worker (sarah@tooldeck.test): sees Action only (no Delete), only 3 actions (Check out, Return, Move), no export button, no purge button, no categories editor, no location add/edit/delete, Settings shows "Worker" label
+- ✅ Lint clean, no runtime errors

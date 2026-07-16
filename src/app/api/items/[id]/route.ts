@@ -99,6 +99,10 @@ export async function PATCH(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Only admins can edit item details
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required to edit items." }, { status: 403 });
+  }
 
   const { id } = await params;
   const body = await req.json().catch(() => null);
@@ -269,6 +273,10 @@ export async function DELETE(
   const session = await requireAuth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Only admins can delete items
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required to delete items." }, { status: 403 });
   }
 
   const { id } = await params;

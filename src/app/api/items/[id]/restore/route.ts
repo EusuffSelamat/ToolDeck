@@ -14,6 +14,10 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  // Only admins can restore deleted items
+  if (session.user.role !== "admin") {
+    return NextResponse.json({ error: "Admin access required to restore items." }, { status: 403 });
+  }
 
   const { id } = await params;
 

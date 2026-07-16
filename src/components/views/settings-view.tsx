@@ -23,6 +23,7 @@ import { useSession, signOut } from "next-auth/react";
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
+import { useRole } from "@/hooks/use-role";
 
 type Category = { id: string; name: string; sort: number };
 
@@ -31,6 +32,8 @@ export function SettingsView() {
   const [, navigate] = useHashRoute();
   const qc = useQueryClient();
   const { toast } = useToast();
+  const role = useRole();
+  const isAdmin = role === "admin";
   const [showCatForm, setShowCatForm] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
 
@@ -123,7 +126,8 @@ export function SettingsView() {
         </button>
       </div>
 
-      {/* Categories editor */}
+      {/* Categories editor — admin only */}
+      {isAdmin && (
       <div className="glass-card mb-4 p-4">
         <div className="mb-3 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -177,8 +181,10 @@ export function SettingsView() {
           ))}
         </div>
       </div>
+      )}
 
-      {/* Export section */}
+      {/* Export section — admin only */}
+      {isAdmin && (
       <div className="glass-card mb-4 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Download size={14} style={{ color: "var(--color-text-low)" }} />
@@ -202,8 +208,10 @@ export function SettingsView() {
           Exports all active (non-deleted) items. Use the export button on the Items tab to export a filtered set.
         </p>
       </div>
+      )}
 
-      {/* Recently deleted */}
+      {/* Recently deleted — admin only */}
+      {isAdmin && (
       <div className="glass-card mb-4 p-4">
         <div className="mb-3 flex items-center gap-2">
           <RotateCcw size={14} style={{ color: "var(--color-text-low)" }} />
@@ -219,9 +227,10 @@ export function SettingsView() {
           <ChevronRight size={14} style={{ color: "var(--color-text-low)" }} />
         </button>
       </div>
+      )}
 
       <p className="mt-6 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
-        TOOLDECK · v1.0
+        TOOLDECK · v1.0{isAdmin ? " · Admin" : " · Worker"}
       </p>
 
       {showCatForm && (

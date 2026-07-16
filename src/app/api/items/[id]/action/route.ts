@@ -60,6 +60,17 @@ export async function POST(
   }
   const data = parsed.data;
 
+  // Workers can only: checkout, checkin, move. Admins can do all actions.
+  if (session.user.role !== "admin") {
+    const allowed = ["checkout", "checkin", "move"];
+    if (!allowed.includes(data.action)) {
+      return NextResponse.json(
+        { error: "Admin access required for this action." },
+        { status: 403 }
+      );
+    }
+  }
+
   const existing = await db.item.findUnique({
     where: { id },
     include: {

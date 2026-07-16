@@ -24,6 +24,7 @@ type Meta = {
   locations: Array<{ id: string; name: string }>;
   categories: Array<{ id: string; name: string }>;
   currentUser: { id: string; name: string };
+  role: "admin" | "worker";
 };
 
 type ItemData = {
@@ -62,6 +63,8 @@ export function ActionSheet({
   const isStock = item.trackingType === "stock";
 
   // Define available actions based on item state
+  const isAdmin = meta.role === "admin";
+
   const actions: Array<{
     id: Action;
     label: string;
@@ -70,12 +73,12 @@ export function ActionSheet({
     disabled?: boolean;
     disabledReason?: string;
   }> = [
-    {
-      id: "edit",
+    ...(isAdmin ? [{
+      id: "edit" as const,
       label: "Edit details",
       icon: Pencil,
       color: "var(--color-teal)",
-    },
+    }] : []),
     {
       id: "checkout",
       label: "Check out",
@@ -102,20 +105,20 @@ export function ActionSheet({
       icon: Move,
       color: "var(--color-teal)",
     },
-    {
-      id: "adjust_qty",
+    ...(isAdmin ? [{
+      id: "adjust_qty" as const,
       label: "Adjust quantity",
       icon: Plus,
       color: "var(--color-teal)",
       disabled: !isStock,
       disabledReason: !isStock ? "Only for stock items" : undefined,
-    },
-    {
-      id: "condition",
+    }] : []),
+    ...(isAdmin ? [{
+      id: "condition" as const,
       label: "Update condition",
       icon: Wrench,
       color: "var(--color-magenta)",
-    },
+    }] : []),
   ];
 
   return (

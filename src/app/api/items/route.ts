@@ -18,7 +18,7 @@ function safeInt(val: string | null, fallback: number): number {
 
 // GET /api/items — list with search + filters.
 // Query params: q, categoryId, status, locationId, trackingType,
-//   holder=me, lowStock=true, deleted=false (default), page, limit
+//   holder=me, deleted=false (default), page, limit
 export async function GET(req: Request) {
   const session = await requireAuth();
   if (!session) {
@@ -33,13 +33,12 @@ export async function GET(req: Request) {
   const homeLocationId = url.searchParams.get("homeLocationId");
   const trackingType = url.searchParams.get("trackingType");
   const holderMe = url.searchParams.get("holder") === "me";
-  const lowStock = url.searchParams.get("lowStock") === "true";
   const deleted = url.searchParams.get("deleted") === "true";
   const page = safeInt(url.searchParams.get("page"), 1);
   // Exports need a higher cap than the UI list.
   const isExport = url.searchParams.get("export") === "true";
   const requestedLimit = safeInt(url.searchParams.get("limit"), 200);
-  const limit = Math.min(isExport || lowStock ? 5000 : 500, requestedLimit);
+  const limit = Math.min(isExport ? 5000 : 500, requestedLimit);
 
   // Build the where clause
   const where: Record<string, unknown> = { isDeleted: deleted };
@@ -67,11 +66,8 @@ export async function GET(req: Request) {
     const locationIds = await getLocationAndDescendants(homeLocationId);
     where.homeLocationId = { in: Array.from(locationIds) };
   }
-  // lowStock implies stock type — but don't overwrite an explicit trackingType
   if (trackingType) {
     where.trackingType = trackingType;
-  } else if (lowStock) {
-    where.trackingType = "stock";
   }
   if (holderMe) where.holderId = session.user.id;
 
@@ -109,7 +105,6 @@ export async function GET(req: Request) {
     status: item.status,
     condition: item.condition,
     quantity: item.quantity,
-    minQuantity: item.minQuantity,
     photoUrl: item.photoUrl,
     categoryName: item.category?.name ?? null,
     homeLocationId: item.homeLocationId,
@@ -128,13 +123,9 @@ export async function GET(req: Request) {
     deletedAt: item.deletedAt,
   })) as ItemListItem[];
 
-  if (lowStock) {
-    result = result.filter((i) => i.quantity <= i.minQuantity);
-  }
-
   return NextResponse.json({
     items: result,
-    total: lowStock ? result.length : total,
+    total,
     page,
     limit,
     hasMore: page * limit < total,
@@ -197,7 +188,6 @@ export async function POST(req: Request) {
             trackingType: data.trackingType,
             status: "available",
             quantity: data.trackingType === "stock" ? data.quantity : 1,
-            minQuantity: data.trackingType === "stock" ? data.minQuantity : 0,
             condition: data.condition,
             homeLocationId: data.homeLocationId || null,
             currentLocationId,

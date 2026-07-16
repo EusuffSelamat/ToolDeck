@@ -31,7 +31,6 @@ type Stats = {
   checkedOut: number;
   needsService: number;
   outOfOrder: number;
-  lowStock: number;
   overdueReturns: number;
   overdueItems: Array<{
     id: string;
@@ -68,7 +67,6 @@ const STAT_DEFS = [
   { key: "available" as const, label: "Available", icon: CheckCircle2, color: "var(--color-teal)" },
   { key: "checkedOut" as const, label: "Checked out", icon: TrendingUp, color: "var(--color-gold)" },
   { key: "needsService" as const, label: "Needs service", icon: AlertTriangle, color: "var(--color-magenta)" },
-  { key: "lowStock" as const, label: "Low stock", icon: AlertTriangle, color: "var(--color-magenta)" },
 ];
 
 // Donut chart colours — teal spectrum + gold for contrast
@@ -289,7 +287,7 @@ export function DashboardView() {
       )}
 
       {/* Row 4 — Needs attention */}
-      {stats && (stats.needsService > 0 || stats.lowStock > 0 || stats.overdueReturns > 0) && (
+      {stats && (stats.needsService > 0 || stats.overdueReturns > 0) && (
         <div className="glass-card mt-4 p-4">
           <div className="mb-3 flex items-center gap-2">
             <span className="num-chip">!</span>
@@ -320,14 +318,7 @@ export function DashboardView() {
                 onClick={() => navigate({ name: "items" })}
               />
             )}
-            {stats.lowStock > 0 && (
-              <AttentionRow
-                icon={Package}
-                color="var(--color-magenta)"
-                label={`${stats.lowStock} low-stock ${stats.lowStock === 1 ? "item" : "items"}`}
-                onClick={() => navigate({ name: "items" })}
-              />
-            )}
+
           </div>
         </div>
       )}

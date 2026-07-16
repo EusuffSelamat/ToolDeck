@@ -50,7 +50,6 @@ export function ItemDetailView({ id }: { id: string }) {
           status: ItemStatus;
           condition: string;
           quantity: number;
-          minQuantity: number;
           homeLocationId: string | null;
           homeLocationName: string | null;
           currentLocationId: string | null;
@@ -320,11 +319,6 @@ export function ItemDetailView({ id }: { id: string }) {
         {item.trackingType === "stock" && (
           <>
             <SpecRow icon={Boxes} label="Quantity" value={String(item.quantity)} />
-            <SpecRow
-              icon={Boxes}
-              label="Min quantity"
-              value={String(item.minQuantity)}
-            />
           </>
         )}
         <SpecRow icon={Wrench} label="Condition" value={item.condition.replace(/_/g, " ")} />
@@ -427,7 +421,6 @@ export function ItemDetailView({ id }: { id: string }) {
             status: item.status,
             condition: item.condition,
             quantity: item.quantity,
-            minQuantity: item.minQuantity,
             homeLocationId: item.homeLocationId,
             currentLocationId: item.currentLocationId,
             currentLocationName: item.currentLocationName,

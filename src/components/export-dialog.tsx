@@ -119,7 +119,7 @@ export function ExportDialog({
         </div>
 
         <p className="mb-4 text-sm" style={{ color: "var(--color-text-mid)" }}>
-          Generates a themed 4-sheet workbook (Summary, Items, Locations, Activity)
+          Generates a themed 3-sheet workbook (Summary, Items, Activity)
           with dark teal styling, color-coded statuses, and clickable photo links.
         </p>
 
@@ -193,8 +193,8 @@ export function ExportDialog({
           }}
         >
           <p className="text-xs" style={{ color: "var(--color-text-mid)" }}>
-            <span style={{ color: "var(--color-teal)", fontWeight: 600 }}>4 sheets:</span>{" "}
-            Dashboard Summary · Items (grouped by location) · Locations · Activity Log
+            <span style={{ color: "var(--color-teal)", fontWeight: 600 }}>3 sheets:</span>{" "}
+            Dashboard Summary · Items (grouped by location) · Activity Log
           </p>
           <p className="mt-1 text-xs" style={{ color: "var(--color-text-low)" }}>
             Photos included as clickable links. Status cells color-coded.

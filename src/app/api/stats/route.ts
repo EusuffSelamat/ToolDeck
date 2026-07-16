@@ -6,11 +6,11 @@ import { requireAuth } from "@/lib/require-auth";
  * GET /api/stats — dashboard summary statistics.
  *
  * Returns:
- *   - totalItems, available, checkedOut, needsService, lowStock
+ *   - totalItems, available, checkedOut, needsService
  *   - overdueReturns (checked out past expectedReturnDate)
  *   - byCategory: [{ name, count }] for the radar
  *   - recentActivity: last 5 transactions for the feed preview
- *   - needsAttention: items needing action (overdue, needs_service, low stock)
+ *   - needsAttention: items needing action (overdue, needs_service)
  */
 export async function GET() {
   const session = await requireAuth();
@@ -26,7 +26,6 @@ export async function GET() {
     checkedOut,
     needsService,
     outOfOrder,
-    lowStockItems,
     overdueItems,
     byCategory,
     byLocation,
@@ -38,11 +37,6 @@ export async function GET() {
     db.item.count({ where: { ...whereActive, status: "checked_out" } }),
     db.item.count({ where: { ...whereActive, status: "needs_service" } }),
     db.item.count({ where: { ...whereActive, status: "out_of_order" } }),
-    // Low stock: stock items where quantity <= minQuantity
-    db.item.findMany({
-      where: { ...whereActive, trackingType: "stock" },
-      select: { quantity: true, minQuantity: true },
-    }),
     // Overdue: checked out with expectedReturnDate < today
     db.item.findMany({
       where: {
@@ -104,15 +98,12 @@ export async function GET() {
     }),
   ]);
 
-  const lowStock = lowStockItems.filter((i) => i.quantity <= i.minQuantity).length;
-
   return NextResponse.json({
     totalItems,
     available,
     checkedOut,
     needsService,
     outOfOrder,
-    lowStock,
     overdueReturns: overdueItems.length,
     overdueItems,
     byCategory: byCategory

@@ -50,7 +50,6 @@ export const itemCreateSchema = z.object({
   categoryId: z.string().optional().nullable(),
   trackingType: z.enum(TRACKING_TYPES),
   quantity: z.number().min(0).default(1),
-  minQuantity: z.number().min(0).default(0),
   condition: z.enum(CONDITIONS).default("good"),
   homeLocationId: z.string().optional().nullable(),
   currentLocationId: z.string().optional().nullable(),
@@ -68,7 +67,6 @@ export const itemUpdateSchema = z.object({
   // trackingType is immutable after creation
   status: z.enum(ITEM_STATUSES).optional(),
   quantity: z.number().min(0).optional(),
-  minQuantity: z.number().min(0).optional(),
   condition: z.enum(CONDITIONS).optional(),
   homeLocationId: z.string().optional().nullable(),
   currentLocationId: z.string().optional().nullable(),
@@ -157,7 +155,6 @@ export type ItemListItem = {
   status: ItemStatus;
   condition: Condition;
   quantity: number;
-  minQuantity: number;
   photoUrl: string | null;
   categoryName: string | null;
   homeLocationId: string | null;
@@ -184,7 +181,6 @@ export type ItemDetail = {
   status: ItemStatus;
   condition: Condition;
   quantity: number;
-  minQuantity: number;
   homeLocationId: string | null;
   homeLocationName: string | null;
   currentLocationId: string | null;

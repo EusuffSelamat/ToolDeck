@@ -38,7 +38,6 @@ type ItemData = {
   status: string;
   condition: string;
   quantity: number;
-  minQuantity: number;
   homeLocationId: string | null;
   currentLocationId: string | null;
   currentLocationName: string | null;

@@ -29,7 +29,6 @@ const TYPE_CHIPS: FilterChip[] = [
 
 const QUICK_CHIPS: FilterChip[] = [
   { key: "holder", label: "My items", value: "me" },
-  { key: "lowStock", label: "Low stock", value: "true" },
 ];
 
 // Read the location filter once (before the component mounts)
@@ -106,7 +105,6 @@ export function ItemsView() {
           status: ItemStatus;
           condition: string;
           quantity: number;
-          minQuantity: number;
           photoUrl: string | null;
           categoryName: string | null;
           homeLocationId: string | null;
@@ -124,7 +122,7 @@ export function ItemsView() {
 
   function toggleFilter(chip: FilterChip) {
     setActiveFilters((prev) => {
-      // For same-key single-value filters (status, trackingType, holder, lowStock),
+      // For same-key single-value filters (status, trackingType, holder),
       // replace; allow multiple different keys
       const filtered = prev.filter((f) => f.key !== chip.key);
       const exists = prev.some(
@@ -236,7 +234,7 @@ export function ItemsView() {
                     <div>
                       <div>Themed Excel</div>
                       <div className="text-[10px]" style={{ color: "var(--color-text-low)" }}>
-                        4 sheets + photos
+                        3 sheets + photos
                       </div>
                     </div>
                   </button>
@@ -517,7 +515,6 @@ export function ItemsView() {
               if (f.key === "status") parts.push(f.label);
               else if (f.key === "trackingType") parts.push(f.label);
               else if (f.key === "holder") parts.push("my items");
-              else if (f.key === "lowStock") parts.push("low stock");
               else if (f.key === "locationId" || f.key === "homeLocationId") parts.push(locationFilterName ?? f.label);
             }
             return parts.length > 0 ? parts.join(" · ") : "All items";
@@ -686,13 +683,9 @@ function ItemCard({
     holderId: string | null;
     holderName: string | null;
     quantity: number;
-    minQuantity: number;
   };
   onClick: () => void;
 }) {
-  const isLowStock =
-    item.trackingType === "stock" && item.quantity <= item.minQuantity;
-
   // "Away from home" = home is set, and either current differs from home,
   // or the item is checked out (holder set)
   const isAwayFromHome =
@@ -728,14 +721,7 @@ function ItemCard({
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="micro-label">{item.code}</span>
-          {isLowStock && (
-            <span
-              className="text-[10px] font-semibold"
-              style={{ color: "var(--color-magenta)" }}
-            >
-              LOW
-            </span>
-          )}
+
         </div>
         <p
           className="truncate text-sm font-medium"

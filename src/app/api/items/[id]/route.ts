@@ -59,7 +59,6 @@ export async function GET(
     status: item.status as ItemDetail["status"],
     condition: item.condition as ItemDetail["condition"],
     quantity: item.quantity,
-    minQuantity: item.minQuantity,
     homeLocationId: item.homeLocationId,
     homeLocationName: item.homeLocation?.name ?? null,
     currentLocationId: item.currentLocationId,
@@ -164,10 +163,6 @@ export async function PATCH(
   if (data.quantity !== undefined && data.quantity !== existing.quantity) {
     updateData.quantity = data.quantity;
     changedFields.push("quantity");
-  }
-  if (data.minQuantity !== undefined && data.minQuantity !== existing.minQuantity) {
-    updateData.minQuantity = data.minQuantity;
-    changedFields.push("min quantity");
   }
   if (data.condition !== undefined && data.condition !== existing.condition) {
     updateData.condition = data.condition;

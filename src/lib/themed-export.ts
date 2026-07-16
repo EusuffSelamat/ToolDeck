@@ -1,11 +1,10 @@
 /**
  * TOOLDECK — Themed Excel Export
  *
- * Generates a 4-sheet .xlsx workbook matching the §10 dark teal glass aesthetic:
+ * Generates a 3-sheet .xlsx workbook matching the §10 dark teal glass aesthetic:
  *   Sheet 1: Dashboard Summary (stats + branded header)
- *   Sheet 2: Items (grouped by location, color-coded status, photo thumbnails)
- *   Sheet 3: Locations Summary (hierarchy + counts)
- *   Sheet 4: Activity Log (all transactions)
+ *   Sheet 2: Items (grouped by location, color-coded status, photo links)
+ *   Sheet 3: Activity Log (all transactions)
  *
  * Uses exceljs (dynamically imported for code-splitting).
  * Photos are fetched, compressed to 48x48px thumbnails (~1-2KB each),
@@ -61,7 +60,6 @@ export type ExportItem = {
   status: string;
   condition: string;
   quantity: number;
-  minQuantity: number;
   photoUrl: string | null;
   homeLocationId: string | null;
   currentLocationId: string | null;
@@ -112,7 +110,6 @@ export type ExportStats = {
   checkedOut: number;
   needsService: number;
   outOfOrder: number;
-  lowStock: number;
   overdueReturns: number;
   byCategory: Array<{ name: string; count: number }>;
   byLocation: Array<{ id: string; name: string; kind: string; count: number }>;
@@ -142,10 +139,7 @@ export async function generateThemedExport(
   // Sheet 2: Items (grouped by location)
   buildItemsSheet(workbook, data.items);
 
-  // Sheet 3: Locations Summary
-  buildLocationsSheet(workbook, data.locations);
-
-  // Sheet 4: Activity Log
+  // Sheet 3: Activity Log (was Sheet 4 — Locations sheet removed per request)
   buildActivitySheet(workbook, data.transactions);
 
   // Generate + download
@@ -218,7 +212,6 @@ function buildSummarySheet(workbook: any, data: ExportData) {
     { label: "AVAILABLE", value: data.stats.available, color: THEME.teal },
     { label: "CHECKED OUT", value: data.stats.checkedOut, color: THEME.gold },
     { label: "NEEDS SERVICE", value: data.stats.needsService, color: THEME.magenta },
-    { label: "LOW STOCK", value: data.stats.lowStock, color: THEME.magenta },
     { label: "OVERDUE", value: data.stats.overdueReturns, color: THEME.danger },
   ];
 
@@ -318,7 +311,6 @@ function buildItemsSheet(workbook: any, items: ExportItem[]) {
     { header: "Status", key: "status", width: 14 },
     { header: "Condition", key: "condition", width: 14 },
     { header: "Qty", key: "qty", width: 6 },
-    { header: "Min", key: "min", width: 6 },
     { header: "Home Location", key: "homeLoc", width: 16 },
     { header: "Parent", key: "homeParent", width: 14 },
     { header: "Current Location", key: "currLoc", width: 16 },
@@ -448,7 +440,6 @@ function writeItemRow(
     status: item.status.replace(/_/g, " "),
     condition: item.condition.replace(/_/g, " "),
     qty: item.quantity,
-    min: item.minQuantity,
     homeLoc: item.homeLocationName ?? "—",
     homeParent: item.homeLocationParentName ?? "",
     currLoc: item.currentLocationName ?? "—",
@@ -464,7 +455,7 @@ function writeItemRow(
     notes: item.notes ?? "",
   };
 
-  for (let c = 2; c <= 23; c++) {
+  for (let c = 2; c <= 22; c++) {
     const cell = ws.getCell(row, c);
     // Column 1 = Photo (handled above), so column 2 = columns[1] (Code)
     const key = columns[c - 1]?.key;
@@ -516,95 +507,7 @@ const columns = [
   { key: "updated" }, { key: "updatedBy" }, { key: "notes" },
 ];
 
-// ── Sheet 3: Locations Summary ──────────────────────────────────────────
-function buildLocationsSheet(workbook: any, locations: ExportLocation[]) {
-  const ws = workbook.addWorksheet("Locations", {
-    properties: { tabColor: THEME.teal.slice(2) },
-  });
-
-  ws.views = [{ showGridLines: false }];
-
-  ws.columns = [
-    { width: 4 }, { width: 22 }, { width: 10 }, { width: 16 },
-    { width: 8 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 },
-  ];
-
-  // Header
-  const headers = ["", "Name", "Kind", "Parent", "Items", "Direct", "Home", "Away", "Children"];
-  for (let c = 1; c <= headers.length; c++) {
-    const cell = ws.getCell(1, c);
-    cell.value = headers[c - 1];
-    cell.font = { name: "Inter", size: 9, bold: true, color: { argb: THEME.textLow } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.glassStrong } };
-    cell.alignment = { horizontal: "center", vertical: "middle" };
-    cell.border = {
-      top: { style: "thin", color: { argb: THEME.hairline } },
-      bottom: { style: "thin", color: { argb: THEME.hairline } },
-    };
-  }
-  ws.getRow(1).height = 22;
-
-  // Sort: roots first, then by name
-  const sorted = [...locations].sort((a, b) => {
-    if (!a.parentLocationId && b.parentLocationId) return -1;
-    if (a.parentLocationId && !b.parentLocationId) return 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  sorted.forEach((loc, i) => {
-    const row = i + 2;
-    const isAlt = row % 2 === 0;
-    const rowBg = isAlt ? THEME.bg0 : THEME.glass;
-    const indent = loc.parentLocationId ? 1 : 0;
-
-    const values = [
-      "",
-      loc.name,
-      loc.kind,
-      loc.parentName ?? "—",
-      loc.itemCount,
-      loc.directItemCount,
-      loc.homeItemCount,
-      loc.awayCount,
-      loc.childrenCount,
-    ];
-
-    for (let c = 1; c <= values.length; c++) {
-      const cell = ws.getCell(row, c);
-      cell.value = values[c - 1];
-      cell.font = {
-        name: "Inter", size: 10,
-        color: { argb: loc.parentLocationId ? THEME.textMid : THEME.textHi },
-      };
-      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
-      cell.alignment = {
-        vertical: "middle",
-        horizontal: c >= 5 ? "center" : "left",
-        indent: c === 2 ? indent : 0,
-      };
-      cell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
-    }
-
-    // Highlight items count in teal
-    const itemsCell = ws.getCell(row, 5);
-    itemsCell.font = { name: "Space Grotesk", size: 11, bold: true, color: { argb: THEME.teal } };
-
-    ws.getRow(row).height = 24;
-  });
-
-  // Fill background
-  const maxRow = sorted.length + 1;
-  for (let r = 1; r <= maxRow; r++) {
-    for (let c = 1; c <= 9; c++) {
-      const cell = ws.getCell(r, c);
-      if (!cell.fill || cell.fill.type !== "pattern") {
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg0 } };
-      }
-    }
-  }
-}
-
-// ── Sheet 4: Activity Log ───────────────────────────────────────────────
+// ── Sheet 3: Activity Log ───────────────────────────────────────────────
 function buildActivitySheet(workbook: any, transactions: ExportTransaction[]) {
   const ws = workbook.addWorksheet("Activity", {
     properties: { tabColor: THEME.teal.slice(2) },

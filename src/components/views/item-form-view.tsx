@@ -33,7 +33,6 @@ export function ItemFormView({ id }: { id?: string }) {
   const [categoryId, setCategoryId] = useState("");
   const [trackingType, setTrackingType] = useState<"asset" | "stock">("asset");
   const [quantity, setQuantity] = useState("1");
-  const [minQuantity, setMinQuantity] = useState("0");
   const [condition, setCondition] = useState("good");
   const [homeLocationId, setHomeLocationId] = useState("");
   const [currentLocationId, setCurrentLocationId] = useState("");
@@ -95,7 +94,6 @@ export function ItemFormView({ id }: { id?: string }) {
       categoryId: string | null;
       trackingType: string;
       quantity: number;
-      minQuantity: number;
       condition: string;
       homeLocationId: string | null;
       currentLocationId: string | null;
@@ -109,7 +107,6 @@ export function ItemFormView({ id }: { id?: string }) {
     setCategoryId(it.categoryId ?? "");
     setTrackingType(it.trackingType as "asset" | "stock");
     setQuantity(String(it.quantity));
-    setMinQuantity(String(it.minQuantity));
     setCondition(it.condition);
     setHomeLocationId(it.homeLocationId ?? "");
     setCurrentLocationId(it.currentLocationId ?? "");
@@ -148,7 +145,6 @@ export function ItemFormView({ id }: { id?: string }) {
 
     // Parse numeric fields safely (0 is a valid quantity — don't || it away)
     const q = parseFloat(quantity);
-    const mq = parseFloat(minQuantity);
 
     const payload: Record<string, unknown> = {
       name: name.trim(),
@@ -159,7 +155,6 @@ export function ItemFormView({ id }: { id?: string }) {
       // trackingType is only sent on create (immutable after)
       ...(isEdit ? {} : { trackingType }),
       quantity: Number.isFinite(q) ? q : 1,
-      minQuantity: Number.isFinite(mq) ? mq : 0,
       condition,
       homeLocationId: homeLocationId || null,
       currentLocationId: currentLocationId || null,
@@ -413,17 +408,6 @@ export function ItemFormView({ id }: { id?: string }) {
                 step="any"
                 value={quantity}
                 onChange={(e) => setQuantity(e.target.value)}
-                className="w-full bg-transparent text-sm outline-none"
-                style={{ color: "var(--color-text-hi)" }}
-              />
-            </FormField>
-            <FormField label="Min (low-stock alert)">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                value={minQuantity}
-                onChange={(e) => setMinQuantity(e.target.value)}
                 className="w-full bg-transparent text-sm outline-none"
                 style={{ color: "var(--color-text-hi)" }}
               />

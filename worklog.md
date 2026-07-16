@@ -533,3 +533,40 @@ VERIFICATION:
 - ✅ Locations tree renders nested hierarchy (Van 2 under Tuas, indented with border)
 - ✅ Tuas shows "1 CHILD" + Van 2 shows "AT TUAS"
 - ✅ Lint clean, no runtime errors
+
+---
+Task ID: REMOVE-MINQTY+LOCATIONS-SHEET
+Agent: GLM (main)
+Task: Remove minQuantity entirely from the app + remove the Locations Summary sheet from the themed Excel export.
+
+Work Log:
+**Removed minQuantity from the entire codebase:**
+- `prisma/schema.prisma` — removed `minQuantity Float @default(0)` from the Item model. Ran `db:push --accept-data-loss`.
+- `src/lib/items.ts` — removed from `itemCreateSchema`, `itemUpdateSchema`, `ItemListItem` type, `ItemDetail` type.
+- `src/app/api/items/route.ts` — removed from: the query param list, the `lowStock` filter logic, the `lowStock` post-filter, the response mapping, the create data. Added `export=true` param that raises the API cap to 5000.
+- `src/app/api/items/[id]/route.ts` — removed from the detail response + the PATCH update logic.
+- `src/app/api/items/deleted/route.ts` — removed from the trash list response.
+- `src/app/api/stats/route.ts` — removed the `lowStockItems` query, the `lowStock` computation, and the `lowStock` field from the response. Also removed from the comment.
+- `src/components/views/items-view.tsx` — removed the "Low stock" filter chip, removed `minQuantity` from the fetch type + ItemCard type, removed the `isLowStock` badge, removed `lowStock` from the filter description builder.
+- `src/components/views/item-form-view.tsx` — removed the `minQuantity` state, the "Min (low-stock alert)" form field, and the `minQuantity` from the payload.
+- `src/components/views/item-detail-view.tsx` — removed the "Min quantity" spec row, removed from the type + the ActionSheet props.
+- `src/components/views/dashboard-view.tsx` — removed the "Low stock" stat pill + the low-stock needs-attention row. Removed from the Stats type.
+- `src/components/action-sheet.tsx` — removed `minQuantity` from the ItemData type.
+- `src/lib/export.ts` — removed "Min Quantity" from the COLUMNS array + the ExportItem type.
+- `src/lib/themed-export.ts` — removed `minQuantity` from ExportItem type, removed the "Min" column from the Items sheet, removed the `lowStock` field from ExportStats type, removed the "LOW STOCK" stat pill from the Summary sheet, updated the column count from 23 to 22.
+
+**Removed the Locations Summary sheet from the themed export:**
+- Removed the `buildLocationsSheet` function entirely.
+- Updated the workbook generation to produce 3 sheets (Summary, Items, Activity) instead of 4.
+- Updated all UI text: "4 sheets" → "3 sheets", "4-sheet" → "3-sheet", export dropdown "4 sheets + photos" → "3 sheets + photos", dialog info "4 sheets: Summary · Items · Locations · Activity" → "3 sheets: Summary · Items · Activity".
+
+VERIFICATION:
+- ✅ Dashboard: no "Low stock" stat pill (Total, Available, Checked out, Needs service only)
+- ✅ Items view: no "Low stock" filter chip (only "My items")
+- ✅ Item detail: no "Min quantity" spec row
+- ✅ Item form: no "Min (low-stock alert)" field
+- ✅ Export dropdown: "Themed Excel 3 sheets + photos"
+- ✅ Export dialog: "3 sheets: Summary · Items · Activity"
+- ✅ Themed export completes successfully (3 sheets, no errors)
+- ✅ Lint clean
+- ✅ Zero remaining references to minQuantity/lowStock in the codebase

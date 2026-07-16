@@ -81,7 +81,6 @@ model Item {
   trackingType    String   // 'asset' | 'stock'
   status          String   @default("available")
   quantity        Float    @default(1)
-  minQuantity     Float    @default(0)
   condition       String   @default("good")
   homeLocationId  String?
   homeLocation    Location? @relation("HomeLocation", fields: [homeLocationId], references: [id])

@@ -36,7 +36,6 @@ export async function GET() {
     status: item.status as ItemListItem["status"],
     condition: item.condition as ItemListItem["condition"],
     quantity: item.quantity,
-    minQuantity: item.minQuantity,
     photoUrl: item.photoUrl,
     categoryName: item.category?.name ?? null,
     currentLocationName: item.currentLocation?.name ?? null,

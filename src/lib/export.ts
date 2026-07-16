@@ -19,7 +19,6 @@ type ExportItem = {
   status: string;
   condition: string;
   quantity: number;
-  minQuantity: number;
   currentLocationName: string | null;
   holderName: string | null;
   notes?: string | null;
@@ -36,7 +35,6 @@ const COLUMNS = [
   { key: "status", label: "Status" },
   { key: "condition", label: "Condition" },
   { key: "quantity", label: "Quantity" },
-  { key: "minQuantity", label: "Min Quantity" },
   { key: "currentLocationName", label: "Location" },
   { key: "holderName", label: "Holder" },
   { key: "updatedAt", label: "Last Activity" },

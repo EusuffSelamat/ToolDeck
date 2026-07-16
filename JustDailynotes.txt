@@ -1,0 +1,13 @@
+Follow up with Phyo to get all of our service records for all our equipment
+Follow up with Phyo to coil up the wire for YC063
+Follow up service report YC052
+*Note to change the boom length sensor for YC077
+Talked to Ganesh to provide the daily reports took his number and he will soon get back with a	l
+
+I want to set up a morning brief with you for every morning at 9am. My interests are generally AI, stock investing, tech and the Boston Celtics. What would be the best prompt I can use to set this up with you? 
+
+
+Follow up with the control switch Part Number for YC077
+Follow up with LMI monitor YC094
+
+i want there to be another sheet which links to the July financial telemtry that also has this cyber style ATTACHED with the following column that logs the date, asset type, type of works (repair or maintenance), Spare Parts & External Services with columns Quantity and Cost right next to it, Materials with columns Quantity and Cost right next to it, Labours, with columns Quantity and Cost right next to it, Transportation with columns Quantity and Cost right next to it, and Total

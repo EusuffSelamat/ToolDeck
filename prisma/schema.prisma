@@ -6,11 +6,11 @@
 //      maintenance_logs  ✅
 
 generator client {
-  provider = "postgresql"   # change from "sqlite" to "postgresql"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"   // this is the block that changes from sqlite
   url      = env("DATABASE_URL")
 }
 

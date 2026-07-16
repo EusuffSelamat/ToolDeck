@@ -61,6 +61,7 @@ export function LocationsView() {
   const locations = data?.locations ?? [];
 
   async function handleDelete(id: string, name: string) {
+    if (!window.confirm(`Delete "${name}"? This cannot be undone.`)) return;
     const res = await fetch(`/api/locations/${id}`, { method: "DELETE" });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -148,7 +149,7 @@ export function LocationsView() {
       ) : (
         <div className="space-y-3 pb-2">
           {(() => {
-            // Build a tree: roots (parentLocationId === null) + their children
+            // Build a tree: roots (parentLocationId === null) + children map
             const roots = locations.filter((l) => !l.parentLocationId);
             const childrenByParent = new Map<string, LocationData[]>();
             for (const loc of locations) {
@@ -159,40 +160,21 @@ export function LocationsView() {
               }
             }
 
-            return roots.map((loc) => {
-              const children = childrenByParent.get(loc.id) ?? [];
-              return (
-                <div key={loc.id} className="space-y-2">
-                  <LocationCard
-                    loc={loc}
-                    onTapLocation={handleTapLocation}
-                    onTapHome={handleTapHome}
-                    onEdit={() => {
-                      setEditingId(loc.id);
-                      setShowForm(true);
-                    }}
-                    onDelete={handleDelete}
-                  />
-                  {children.length > 0 && (
-                    <div className="ml-4 space-y-2 border-l pl-3" style={{ borderColor: "var(--color-border)" }}>
-                      {children.map((child) => (
-                        <LocationCard
-                          key={child.id}
-                          loc={child}
-                          onTapLocation={handleTapLocation}
-                          onTapHome={handleTapHome}
-                          onEdit={() => {
-                            setEditingId(child.id);
-                            setShowForm(true);
-                          }}
-                          onDelete={handleDelete}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            });
+            return roots.map((loc) => (
+              <LocationTreeNode
+                key={loc.id}
+                loc={loc}
+                childrenByParent={childrenByParent}
+                depth={0}
+                onTapLocation={handleTapLocation}
+                onTapHome={handleTapHome}
+                onEdit={(id) => {
+                  setEditingId(id);
+                  setShowForm(true);
+                }}
+                onDelete={handleDelete}
+              />
+            ));
           })()}
         </div>
       )}
@@ -422,6 +404,61 @@ function LocationForm({
           </div>
         </form>
       </div>
+    </div>
+  );
+}
+
+// ── Recursive Location Tree Node (renders to any depth) ─────────────────
+function LocationTreeNode({
+  loc,
+  childrenByParent,
+  depth,
+  onTapLocation,
+  onTapHome,
+  onEdit,
+  onDelete,
+}: {
+  loc: LocationData;
+  childrenByParent: Map<string, LocationData[]>;
+  depth: number;
+  onTapLocation: (loc: LocationData) => void;
+  onTapHome: (loc: LocationData) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string, name: string) => void;
+}) {
+  const children = childrenByParent.get(loc.id) ?? [];
+
+  return (
+    <div className="space-y-2">
+      <LocationCard
+        loc={loc}
+        onTapLocation={onTapLocation}
+        onTapHome={onTapHome}
+        onEdit={() => onEdit(loc.id)}
+        onDelete={onDelete}
+      />
+      {children.length > 0 && (
+        <div
+          className="space-y-2 border-l pl-3"
+          style={{
+            borderColor: "var(--color-border)",
+            marginLeft: depth > 0 ? 16 : 16,
+          }}
+        >
+          {children.map((child) => (
+            <LocationTreeNode
+              key={child.id}
+              loc={child}
+              childrenByParent={childrenByParent}
+              depth={depth + 1}
+              onTapLocation={onTapLocation}
+              onTapHome={onTapHome}
+              onEdit={onEdit}
+              onDelete={onDelete}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

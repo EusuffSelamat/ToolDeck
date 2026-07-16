@@ -36,10 +36,10 @@ export async function GET(req: Request) {
   const lowStock = url.searchParams.get("lowStock") === "true";
   const deleted = url.searchParams.get("deleted") === "true";
   const page = safeInt(url.searchParams.get("page"), 1);
-  // Raise the cap to 2000 (the documented scale) so lists + exports don't truncate.
-  // lowStock uses a high take because the post-filter reduces the result set.
+  // Exports need a higher cap than the UI list.
+  const isExport = url.searchParams.get("export") === "true";
   const requestedLimit = safeInt(url.searchParams.get("limit"), 200);
-  const limit = Math.min(lowStock ? 2000 : 500, requestedLimit);
+  const limit = Math.min(isExport || lowStock ? 5000 : 500, requestedLimit);
 
   // Build the where clause
   const where: Record<string, unknown> = { isDeleted: deleted };

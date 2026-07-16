@@ -119,6 +119,8 @@ export async function DELETE(
           itemsHome: { where: { isDeleted: false } },
           itemsCurrent: { where: { isDeleted: false } },
           children: true,
+          txFrom: true,
+          txTo: true,
         },
       },
     },
@@ -126,6 +128,17 @@ export async function DELETE(
 
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+
+  // Block if transactions reference this location (audit trail integrity)
+  const txCount = existing._count.txFrom + existing._count.txTo;
+  if (txCount > 0) {
+    return NextResponse.json(
+      {
+        error: `Cannot delete — ${txCount} transaction(s) reference this location in the audit trail. Rename it instead.`,
+      },
+      { status: 409 }
+    );
   }
 
   const inUse = existing._count.itemsHome + existing._count.itemsCurrent;

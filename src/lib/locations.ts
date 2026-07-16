@@ -10,34 +10,55 @@ import { db } from "@/lib/db";
 const MAX_DEPTH = 16; // sanity cap — prevents infinite loops on corrupt data
 
 /**
+ * Fetch all locations once and build a parent→children map.
+ * Shared across all descendant/isAncestor calls in the same request
+ * to avoid N+1 queries.
+ */
+let cachedLocationMap: { map: Map<string | null, string[]>; parentMap: Map<string, string | null>; expiry: number } | null = null;
+const MAP_CACHE_TTL = 10_000; // 10s
+
+async function getLocationMaps() {
+  const now = Date.now();
+  if (cachedLocationMap && now < cachedLocationMap.expiry) {
+    return cachedLocationMap;
+  }
+  const all = await db.location.findMany({
+    select: { id: true, parentLocationId: true },
+  });
+  const map = new Map<string | null, string[]>();
+  const parentMap = new Map<string, string | null>();
+  for (const loc of all) {
+    if (!map.has(loc.parentLocationId)) map.set(loc.parentLocationId, []);
+    map.get(loc.parentLocationId)!.push(loc.id);
+    parentMap.set(loc.id, loc.parentLocationId);
+  }
+  cachedLocationMap = { map, parentMap, expiry: now + MAP_CACHE_TTL };
+  return cachedLocationMap;
+}
+
+/**
  * Returns the set of all descendant location IDs for a given parent,
- * NOT including the parent itself. Uses a single DB query + in-memory BFS.
+ * NOT including the parent itself. Uses the shared location map.
  */
 export async function getDescendantLocationIds(
   parentId: string
 ): Promise<Set<string>> {
-  const all = await db.location.findMany({
-    select: { id: true, parentLocationId: true },
-  });
-
-  const byParent = new Map<string | null, string[]>();
-  for (const loc of all) {
-    const key = loc.parentLocationId;
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key)!.push(loc.id);
-  }
+  const { map: byParent } = await getLocationMaps();
 
   const descendants = new Set<string>();
   const queue = [parentId];
   let depth = 0;
 
   while (queue.length > 0 && depth < MAX_DEPTH) {
-    const current = queue.shift()!;
-    const children = byParent.get(current) ?? [];
-    for (const childId of children) {
-      if (!descendants.has(childId)) {
-        descendants.add(childId);
-        queue.push(childId);
+    const levelSize = queue.length;
+    for (let i = 0; i < levelSize; i++) {
+      const current = queue.shift()!;
+      const children = byParent.get(current) ?? [];
+      for (const childId of children) {
+        if (!descendants.has(childId)) {
+          descendants.add(childId);
+          queue.push(childId);
+        }
       }
     }
     depth++;
@@ -60,21 +81,17 @@ export async function getLocationAndDescendants(
 
 /**
  * Walks up the parent chain from `startId` to check if `targetId` is an
- * ancestor. Used to prevent circular references when setting a parent.
- * Returns true if `targetId` is found in the ancestor chain (cycle detected).
+ * ancestor. Uses the shared in-memory parent map — no per-node DB queries.
  */
 export async function isAncestor(
   startId: string,
   targetId: string
 ): Promise<boolean> {
+  const { parentMap } = await getLocationMaps();
   let cursor: string | null = startId;
   for (let i = 0; i < MAX_DEPTH && cursor; i++) {
     if (cursor === targetId) return true;
-    const node = await db.location.findUnique({
-      where: { id: cursor },
-      select: { parentLocationId: true },
-    });
-    cursor = node?.parentLocationId ?? null;
+    cursor = parentMap.get(cursor) ?? null;
   }
   return false;
 }

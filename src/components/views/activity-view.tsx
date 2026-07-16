@@ -94,10 +94,11 @@ export function ActivityView() {
 
   async function handlePurge(scope: string) {
     setShowPurgeMenu(false);
+    const label = PURGE_OPTIONS.find((o) => o.value === scope)?.label ?? scope;
     const confirmed = window.confirm(
       scope === "all"
         ? "Delete ALL activity logs permanently? This cannot be undone."
-        : `Delete activity logs ${scope}? This cannot be undone.`
+        : `Delete activity logs ${label.toLowerCase()}? This cannot be undone.`
     );
     if (!confirmed) return;
 

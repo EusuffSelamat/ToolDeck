@@ -23,8 +23,10 @@ export function ExportDialog({
   async function handleExport() {
     setBusy(true);
     try {
-      // Fetch items (filtered or all)
-      const itemsQuery = scope === "filtered" ? filterQueryString : "limit=2000";
+      // Fetch items (filtered or all) — use export=true to raise the API cap
+      const itemsQuery = scope === "filtered"
+        ? (filterQueryString ? `${filterQueryString}&export=true&limit=5000` : "export=true&limit=5000")
+        : "export=true&limit=5000";
       const [itemsRes, locationsRes, transactionsRes, statsRes] = await Promise.all([
         fetch(`/api/items?${itemsQuery}`),
         fetch("/api/locations"),
@@ -118,7 +120,7 @@ export function ExportDialog({
 
         <p className="mb-4 text-sm" style={{ color: "var(--color-text-mid)" }}>
           Generates a themed 4-sheet workbook (Summary, Items, Locations, Activity)
-          with dark teal styling, color-coded statuses, and photo thumbnails.
+          with dark teal styling, color-coded statuses, and clickable photo links.
         </p>
 
         {/* Scope selection */}

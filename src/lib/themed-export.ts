@@ -30,22 +30,22 @@ const THEME = {
   textLow: "FF6E8D89",      // muted text
 };
 
-// Status → fill colour mapping
+// Status → fill colour mapping (dark variants to match the theme)
 const STATUS_FILL: Record<string, string> = {
-  available: THEME.teal,
-  checked_out: THEME.gold,
-  needs_service: THEME.magenta,
-  out_of_order: THEME.danger,
+  available: THEME.tealDeep,       // #0E4F4A — dark teal
+  checked_out: "FF3D2E12",         // dark gold/bronze
+  needs_service: "FF4A1E38",       // dark magenta
+  out_of_order: "FF3A1218",        // dark red
   // Condition values (shared mapping)
-  good: THEME.teal,
+  good: THEME.tealDeep,
 };
 
 const STATUS_TEXT: Record<string, string> = {
-  available: "FF04211D",
-  checked_out: "FF04211D",
-  needs_service: "FFEAF7F4",
-  out_of_order: "FFEAF7F4",
-  good: "FF04211D",
+  available: THEME.teal,            // bright teal text on dark teal bg
+  checked_out: THEME.gold,          // bright gold text on dark gold bg
+  needs_service: THEME.magenta,     // bright magenta text on dark magenta bg
+  out_of_order: THEME.danger,       // bright red text on dark red bg
+  good: THEME.teal,
 };
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ function buildSummarySheet(workbook: any, data: ExportData) {
     // Overlay a proportional fill by setting the cell value to a bar string
     const barChars = Math.round(barPct * 20);
     barCell.value = "█".repeat(barChars) + "░".repeat(20 - barChars);
-    barCell.font = { name: "Inter", size: 9, color: { argb: THEME.teal } };
+    barCell.font = { name: "Consolas", size: 9, color: { argb: THEME.teal } };
     barCell.alignment = { horizontal: "left", vertical: "middle" };
   });
 

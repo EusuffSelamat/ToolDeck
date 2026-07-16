@@ -1,0 +1,714 @@
+     1→/**
+     2→ * TOOLDECK — Themed Excel Export
+     3→ *
+     4→ * Generates a 4-sheet .xlsx workbook matching the §10 dark teal glass aesthetic:
+     5→ *   Sheet 1: Dashboard Summary (stats + branded header)
+     6→ *   Sheet 2: Items (grouped by location, color-coded status, photo thumbnails)
+     7→ *   Sheet 3: Locations Summary (hierarchy + counts)
+     8→ *   Sheet 4: Activity Log (all transactions)
+     9→ *
+    10→ * Uses exceljs (dynamically imported for code-splitting).
+    11→ * Photos are fetched, compressed to 48x48px thumbnails (~1-2KB each),
+    12→ * and embedded as images — minimal file size impact.
+    13→ */
+    14→
+    15→// ── Theme colours (§10) ──────────────────────────────────────────────────
+    16→const THEME = {
+    17→  bg0: "FF030A0A",          // page background
+    18→  bg1: "FF061111",          // raised surface
+    19→  glass: "FF0A1A1A",        // card fill
+    20→  glassStrong: "FF0E2221",  // sheet/card
+    21→  hairline: "FF7EDED2",     // borders (with alpha)
+    22→  teal: "FF19E3C4",          // primary
+    23→  tealBright: "FF6BFFE9",   // glow cores
+    24→  tealDeep: "FF0E4F4A",     // chart tracks
+    25→  gold: "FFC9A063",          // selection / checked out
+    26→  magenta: "FFE06FB2",       // needs service / low stock
+    27→  danger: "FFE0566B",        // out of order
+    28→  textHi: "FFEAF7F4",       // primary text
+    29→  textMid: "FF9FBDB8",      // secondary text
+    30→  textLow: "FF6E8D89",      // muted text
+    31→};
+    32→
+    33→// Status → fill colour mapping (dark variants to match the theme)
+    34→const STATUS_FILL: Record<string, string> = {
+    35→  available: THEME.tealDeep,       // #0E4F4A — dark teal
+    36→  checked_out: "FF3D2E12",         // dark gold/bronze
+    37→  needs_service: "FF4A1E38",       // dark magenta
+    38→  out_of_order: "FF3A1218",        // dark red
+    39→  // Condition values (shared mapping)
+    40→  good: THEME.tealDeep,
+    41→};
+    42→
+    43→const STATUS_TEXT: Record<string, string> = {
+    44→  available: THEME.teal,            // bright teal text on dark teal bg
+    45→  checked_out: THEME.gold,          // bright gold text on dark gold bg
+    46→  needs_service: THEME.magenta,     // bright magenta text on dark magenta bg
+    47→  out_of_order: THEME.danger,       // bright red text on dark red bg
+    48→  good: THEME.teal,
+    49→};
+    50→
+    51→// ── Types ────────────────────────────────────────────────────────────────
+    52→export type ExportItem = {
+    53→  id: string;
+    54→  code: string;
+    55→  name: string;
+    56→  brand: string | null;
+    57→  model: string | null;
+    58→  serialNo: string | null;
+    59→  categoryName: string | null;
+    60→  trackingType: string;
+    61→  status: string;
+    62→  condition: string;
+    63→  quantity: number;
+    64→  minQuantity: number;
+    65→  photoUrl: string | null;
+    66→  homeLocationId: string | null;
+    67→  currentLocationId: string | null;
+    68→  currentLocationName: string | null;
+    69→  currentLocationParentName: string | null;
+    70→  homeLocationName: string | null;
+    71→  homeLocationParentName: string | null;
+    72→  holderId: string | null;
+    73→  holderName: string | null;
+    74→  expectedReturnDate: string | null;
+    75→  createdByName: string | null;
+    76→  createdAt: string;
+    77→  updatedByName: string | null;
+    78→  updatedAt: string;
+    79→  notes: string | null;
+    80→};
+    81→
+    82→export type ExportLocation = {
+    83→  id: string;
+    84→  name: string;
+    85→  kind: string;
+    86→  parentLocationId: string | null;
+    87→  parentName: string | null;
+    88→  childrenCount: number;
+    89→  itemCount: number;
+    90→  directItemCount: number;
+    91→  homeItemCount: number;
+    92→  awayCount: number;
+    93→};
+    94→
+    95→export type ExportTransaction = {
+    96→  id: string;
+    97→  action: string;
+    98→  qtyDelta: number | null;
+    99→  note: string | null;
+   100→  createdAt: string;
+   101→  itemCode: string | null;
+   102→  itemName: string | null;
+   103→  personName: string | null;
+   104→  holderName: string | null;
+   105→  fromLocationName: string | null;
+   106→  toLocationName: string | null;
+   107→};
+   108→
+   109→export type ExportStats = {
+   110→  totalItems: number;
+   111→  available: number;
+   112→  checkedOut: number;
+   113→  needsService: number;
+   114→  outOfOrder: number;
+   115→  lowStock: number;
+   116→  overdueReturns: number;
+   117→  byCategory: Array<{ name: string; count: number }>;
+   118→  byLocation: Array<{ id: string; name: string; kind: string; count: number }>;
+   119→};
+   120→
+   121→export type ExportData = {
+   122→  items: ExportItem[];
+   123→  locations: ExportLocation[];
+   124→  transactions: ExportTransaction[];
+   125→  stats: ExportStats;
+   126→  filterDescription: string;
+   127→};
+   128→
+   129→// ── Main export function ────────────────────────────────────────────────
+   130→export async function generateThemedExport(
+   131→  data: ExportData,
+   132→  filename: string
+   133→): Promise<void> {
+   134→  const ExcelJS = await import("exceljs");
+   135→  const workbook = new ExcelJS.Workbook();
+   136→  workbook.creator = "TOOLDECK";
+   137→  workbook.created = new Date();
+   138→
+   139→  // Sheet 1: Dashboard Summary
+   140→  buildSummarySheet(workbook, data);
+   141→
+   142→  // Sheet 2: Items (grouped by location)
+   143→  buildItemsSheet(workbook, data.items);
+   144→
+   145→  // Sheet 3: Locations Summary
+   146→  buildLocationsSheet(workbook, data.locations);
+   147→
+   148→  // Sheet 4: Activity Log
+   149→  buildActivitySheet(workbook, data.transactions);
+   150→
+   151→  // Generate + download
+   152→  const buffer = await workbook.xlsx.writeBuffer();
+   153→  const blob = new Blob([buffer], {
+   154→    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+   155→  });
+   156→  const url = URL.createObjectURL(blob);
+   157→  const a = document.createElement("a");
+   158→  a.href = url;
+   159→  a.download = filename;
+   160→  document.body.appendChild(a);
+   161→  a.click();
+   162→  document.body.removeChild(a);
+   163→  URL.revokeObjectURL(url);
+   164→}
+   165→
+   166→// ── Sheet 1: Dashboard Summary ──────────────────────────────────────────
+   167→function buildSummarySheet(workbook: any, data: ExportData) {
+   168→  const ws = workbook.addWorksheet("Summary", {
+   169→    properties: { tabColor: THEME.teal.slice(2) },
+   170→  });
+   171→
+   172→  ws.views = [{ showGridLines: false }];
+   173→
+   174→  // Set column widths
+   175→  ws.columns = [
+   176→    { width: 4 }, { width: 28 }, { width: 14 }, { width: 14 },
+   177→    { width: 14 }, { width: 14 }, { width: 14 }, { width: 4 },
+   178→  ];
+   179→
+   180→  // Fill background for used range
+   181→  const fillBg = (row: number, col: number) => {
+   182→    const cell = ws.getCell(row, col);
+   183→    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg0 } };
+   184→  };
+   185→
+   186→  // Branded header
+   187→  ws.mergeCells("B2:G2");
+   188→  const titleCell = ws.getCell("B2");
+   189→  titleCell.value = "TOOLDECK";
+   190→  titleCell.font = { name: "Space Grotesk", size: 28, bold: true, color: { argb: THEME.teal } };
+   191→  titleCell.alignment = { horizontal: "left", vertical: "middle" };
+   192→  ws.getRow(2).height = 40;
+   193→
+   194→  ws.mergeCells("B3:G3");
+   195→  const subtitleCell = ws.getCell("B3");
+   196→  subtitleCell.value = "Inventory Platform · Export Report";
+   197→  subtitleCell.font = { name: "Inter", size: 11, color: { argb: THEME.textLow } };
+   198→  subtitleCell.alignment = { horizontal: "left", vertical: "middle" };
+   199→
+   200→  ws.mergeCells("B4:G4");
+   201→  const dateCell = ws.getCell("B4");
+   202→  dateCell.value = `Exported: ${new Date().toLocaleString("en-SG", {
+   203→    day: "numeric", month: "long", year: "numeric",
+   204→    hour: "2-digit", minute: "2-digit", hour12: false,
+   205→  })}`;
+   206→  dateCell.font = { name: "Inter", size: 10, color: { argb: THEME.textMid } };
+   207→
+   208→  ws.mergeCells("B5:G5");
+   209→  const filterCell = ws.getCell("B5");
+   210→  filterCell.value = `Scope: ${data.filterDescription} · ${data.items.length} items · ${data.transactions.length} transactions`;
+   211→  filterCell.font = { name: "Inter", size: 10, color: { argb: THEME.textMid } };
+   212→
+   213→  // Stats section
+   214→  ws.getRow(7).height = 8; // spacer
+   215→
+   216→  const statDefs = [
+   217→    { label: "TOTAL", value: data.stats.totalItems, color: THEME.teal },
+   218→    { label: "AVAILABLE", value: data.stats.available, color: THEME.teal },
+   219→    { label: "CHECKED OUT", value: data.stats.checkedOut, color: THEME.gold },
+   220→    { label: "NEEDS SERVICE", value: data.stats.needsService, color: THEME.magenta },
+   221→    { label: "LOW STOCK", value: data.stats.lowStock, color: THEME.magenta },
+   222→    { label: "OVERDUE", value: data.stats.overdueReturns, color: THEME.danger },
+   223→  ];
+   224→
+   225→  statDefs.forEach((stat, i) => {
+   226→    const col = i + 2; // columns B-G
+   227→    const labelCell = ws.getCell(8, col);
+   228→    labelCell.value = stat.label;
+   229→    labelCell.font = { name: "Inter", size: 8, bold: true, color: { argb: THEME.textLow } };
+   230→    labelCell.alignment = { horizontal: "center", vertical: "middle" };
+   231→    labelCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.glass } };
+   232→    labelCell.border = {
+   233→      top: { style: "thin", color: { argb: THEME.hairline } },
+   234→      left: { style: "thin", color: { argb: THEME.hairline } },
+   235→      right: { style: "thin", color: { argb: THEME.hairline } },
+   236→    };
+   237→
+   238→    const valueCell = ws.getCell(9, col);
+   239→    valueCell.value = stat.value;
+   240→    valueCell.font = { name: "Space Grotesk", size: 22, bold: true, color: { argb: stat.color } };
+   241→    valueCell.alignment = { horizontal: "center", vertical: "middle" };
+   242→    valueCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.glass } };
+   243→    valueCell.border = {
+   244→      left: { style: "thin", color: { argb: THEME.hairline } },
+   245→      right: { style: "thin", color: { argb: THEME.hairline } },
+   246→      bottom: { style: "thin", color: { argb: THEME.hairline } },
+   247→    };
+   248→  });
+   249→  ws.getRow(9).height = 36;
+   250→
+   251→  // Category breakdown
+   252→  ws.getRow(11).height = 8; // spacer
+   253→
+   254→  const catHeaderCell = ws.getCell("B12");
+   255→  catHeaderCell.value = "BY CATEGORY";
+   256→  catHeaderCell.font = { name: "Inter", size: 9, bold: true, color: { argb: THEME.textLow } };
+   257→
+   258→  data.stats.byCategory.forEach((cat, i) => {
+   259→    const row = 13 + i;
+   260→    const nameCell = ws.getCell(row, 2);
+   261→    nameCell.value = cat.name;
+   262→    nameCell.font = { name: "Inter", size: 11, color: { argb: THEME.textHi } };
+   263→    nameCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg1 } };
+   264→    nameCell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
+   265→
+   266→    const countCell = ws.getCell(row, 3);
+   267→    countCell.value = cat.count;
+   268→    countCell.font = { name: "Space Grotesk", size: 12, bold: true, color: { argb: THEME.teal } };
+   269→    countCell.alignment = { horizontal: "center" };
+   270→    countCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg1 } };
+   271→    countCell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
+   272→
+   273→    // Visual bar — single merged cell with proportional fill
+   274→    const maxCount = data.stats.byCategory[0]?.count || 1;
+   275→    const barPct = (cat.count / maxCount);
+   276→    ws.mergeCells(row, 4, row, 7);
+   277→    const barCell = ws.getCell(row, 4);
+   278→    barCell.value = "";
+   279→    barCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.tealDeep } };
+   280→    barCell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
+   281→
+   282→    // Overlay a proportional fill by setting the cell value to a bar string
+   283→    const barChars = Math.round(barPct * 20);
+   284→    barCell.value = "█".repeat(barChars) + "░".repeat(20 - barChars);
+   285→    barCell.font = { name: "Inter", size: 9, color: { argb: THEME.teal } };
+   286→    barCell.alignment = { horizontal: "left", vertical: "middle" };
+   287→  });
+   288→
+   289→  // Fill background for all used cells
+   290→  const maxRow = Math.max(13 + data.stats.byCategory.length, 20);
+   291→  for (let r = 1; r <= maxRow; r++) {
+   292→    for (let c = 1; c <= 8; c++) {
+   293→      const cell = ws.getCell(r, c);
+   294→      if (!cell.fill || cell.fill.type !== "pattern") {
+   295→        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg0 } };
+   296→      }
+   297→    }
+   298→  }
+   299→}
+   300→
+   301→// ── Sheet 2: Items (grouped by location) ────────────────────────────────
+   302→function buildItemsSheet(workbook: any, items: ExportItem[]) {
+   303→  const ws = workbook.addWorksheet("Items", {
+   304→    properties: { tabColor: THEME.teal.slice(2) },
+   305→  });
+   306→
+   307→  ws.views = [{ showGridLines: false }];
+   308→
+   309→  const columns = [
+   310→    { header: "Photo", key: "photo", width: 8 },
+   311→    { header: "Code", key: "code", width: 12 },
+   312→    { header: "Name", key: "name", width: 24 },
+   313→    { header: "Brand", key: "brand", width: 14 },
+   314→    { header: "Model", key: "model", width: 14 },
+   315→    { header: "Serial", key: "serial", width: 14 },
+   316→    { header: "Category", key: "category", width: 16 },
+   317→    { header: "Type", key: "type", width: 8 },
+   318→    { header: "Status", key: "status", width: 14 },
+   319→    { header: "Condition", key: "condition", width: 14 },
+   320→    { header: "Qty", key: "qty", width: 6 },
+   321→    { header: "Min", key: "min", width: 6 },
+   322→    { header: "Home Location", key: "homeLoc", width: 16 },
+   323→    { header: "Parent", key: "homeParent", width: 14 },
+   324→    { header: "Current Location", key: "currLoc", width: 16 },
+   325→    { header: "Parent", key: "currParent", width: 14 },
+   326→    { header: "Holder", key: "holder", width: 14 },
+   327→    { header: "Expected Return", key: "returnDate", width: 14 },
+   328→    { header: "Created", key: "created", width: 14 },
+   329→    { header: "Created By", key: "createdBy", width: 14 },
+   330→    { header: "Updated", key: "updated", width: 14 },
+   331→    { header: "Updated By", key: "updatedBy", width: 14 },
+   332→    { header: "Notes", key: "notes", width: 30 },
+   333→  ];
+   334→
+   335→  ws.columns = columns;
+   336→
+   337→  // Group items by current location
+   338→  const grouped = new Map<string, ExportItem[]>();
+   339→  const noLocation: ExportItem[] = [];
+   340→  for (const item of items) {
+   341→    const key = item.currentLocationName ?? "__no_location__";
+   342→    if (key === "__no_location__") {
+   343→      noLocation.push(item);
+   344→    } else {
+   345→      const arr = grouped.get(key) ?? [];
+   346→      arr.push(item);
+   347→      grouped.set(key, arr);
+   348→    }
+   349→  }
+   350→
+   351→  let row = 1;
+   352→
+   353→  // Styled header helper
+   354→  const styleHeader = (cell: any) => {
+   355→    cell.font = { name: "Inter", size: 9, bold: true, color: { argb: THEME.textLow } };
+   356→    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.glassStrong } };
+   357→    cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
+   358→    cell.border = {
+   359→      top: { style: "thin", color: { argb: THEME.hairline } },
+   360→      bottom: { style: "thin", color: { argb: THEME.hairline } },
+   361→      left: { style: "thin", color: { argb: THEME.hairline } },
+   362→      right: { style: "thin", color: { argb: THEME.hairline } },
+   363→    };
+   364→  };
+   365→
+   366→  // Column headers
+   367→  for (let c = 1; c <= columns.length; c++) {
+   368→    styleHeader(ws.getCell(row, c));
+   369→  }
+   370→  ws.getRow(row).height = 24;
+   371→  row++;
+   372→
+   373→  // Location groups
+   374→  for (const [locationName, locationItems] of grouped) {
+   375→    // Location group header
+   376→    ws.mergeCells(row, 1, row, columns.length);
+   377→    const groupCell = ws.getCell(row, 1);
+   378→    groupCell.value = `📍 ${locationName} · ${locationItems.length} item${locationItems.length === 1 ? "" : "s"}`;
+   379→    groupCell.font = { name: "Inter", size: 11, bold: true, color: { argb: THEME.teal } };
+   380→    groupCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.tealDeep } };
+   381→    groupCell.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+   382→    ws.getRow(row).height = 22;
+   383→    row++;
+   384→
+   385→    // Item rows
+   386→    for (const item of locationItems) {
+   387→      writeItemRow(ws, row, item);
+   388→      row++;
+   389→    }
+   390→  }
+   391→
+   392→  // No-location group
+   393→  if (noLocation.length > 0) {
+   394→    ws.mergeCells(row, 1, row, columns.length);
+   395→    const groupCell = ws.getCell(row, 1);
+   396→    groupCell.value = `📍 No location · ${noLocation.length} item${noLocation.length === 1 ? "" : "s"}`;
+   397→    groupCell.font = { name: "Inter", size: 11, bold: true, color: { argb: THEME.textLow } };
+   398→    groupCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg1 } };
+   399→    groupCell.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+   400→    ws.getRow(row).height = 22;
+   401→    row++;
+   402→
+   403→    for (const item of noLocation) {
+   404→      writeItemRow(ws, row, item);
+   405→      row++;
+   406→    }
+   407→  }
+   408→
+   409→  // Fill background for all cells
+   410→  for (let r = 1; r <= row; r++) {
+   411→    for (let c = 1; c <= columns.length; c++) {
+   412→      const cell = ws.getCell(r, c);
+   413→      if (!cell.fill || cell.fill.type !== "pattern") {
+   414→        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg0 } };
+   415→      }
+   416→    }
+   417→  }
+   418→}
+   419→
+   420→function writeItemRow(
+   421→  ws: any,
+   422→  row: number,
+   423→  item: ExportItem,
+   424→) {
+   425→  const isAlt = row % 2 === 0;
+   426→  const rowBg = isAlt ? THEME.bg0 : THEME.glass;
+   427→  const rowHeight = 28;
+   428→
+   429→  // Photo: include as a clickable hyperlink — must be absolute URL for Excel
+   430→  if (item.photoUrl) {
+   431→    const photoCell = ws.getCell(row, 1);
+   432→    const absoluteUrl = item.photoUrl.startsWith("http")
+   433→      ? item.photoUrl
+   434→      : `${window.location.origin}${item.photoUrl}`;
+   435→    photoCell.value = { text: "📷 View", hyperlink: absoluteUrl };
+   436→    photoCell.font = { name: "Inter", size: 9, color: { argb: THEME.teal }, underline: true };
+   437→    photoCell.alignment = { horizontal: "center", vertical: "middle" };
+   438→  }
+   439→
+   440→  const values: Record<string, string | number | null> = {
+   441→    code: item.code,
+   442→    name: item.name,
+   443→    brand: item.brand ?? "",
+   444→    model: item.model ?? "",
+   445→    serial: item.serialNo ?? "",
+   446→    category: item.categoryName ?? "Uncategorised",
+   447→    type: item.trackingType === "asset" ? "Asset" : "Stock",
+   448→    status: item.status.replace(/_/g, " "),
+   449→    condition: item.condition.replace(/_/g, " "),
+   450→    qty: item.quantity,
+   451→    min: item.minQuantity,
+   452→    homeLoc: item.homeLocationName ?? "—",
+   453→    homeParent: item.homeLocationParentName ?? "",
+   454→    currLoc: item.currentLocationName ?? "—",
+   455→    currParent: item.currentLocationParentName ?? "",
+   456→    holder: item.holderName ?? "—",
+   457→    returnDate: item.expectedReturnDate
+   458→      ? new Date(item.expectedReturnDate).toLocaleDateString("en-SG")
+   459→      : "",
+   460→    created: new Date(item.createdAt).toLocaleDateString("en-SG"),
+   461→    createdBy: item.createdByName ?? "—",
+   462→    updated: new Date(item.updatedAt).toLocaleDateString("en-SG"),
+   463→    updatedBy: item.updatedByName ?? "—",
+   464→    notes: item.notes ?? "",
+   465→  };
+   466→
+   467→  for (let c = 2; c <= 23; c++) {
+   468→    const cell = ws.getCell(row, c);
+   469→    // Column 1 = Photo (handled above), so column 2 = columns[1] (Code)
+   470→    const key = columns[c - 1]?.key;
+   471→    if (key && key in values) {
+   472→      cell.value = values[key];
+   473→    }
+   474→    cell.font = { name: "Inter", size: 10, color: { argb: THEME.textHi } };
+   475→    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
+   476→    cell.alignment = { vertical: "middle", wrapText: false };
+   477→    cell.border = {
+   478→      bottom: { style: "hair", color: { argb: THEME.hairline } },
+   479→    };
+   480→  }
+   481→
+   482→  // Photo cell background
+   483→  const photoCell = ws.getCell(row, 1);
+   484→  photoCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
+   485→
+   486→  // Color-code status cell (column 9)
+   487→  const statusCell = ws.getCell(row, 9);
+   488→  const statusFill = STATUS_FILL[item.status] ?? THEME.bg1;
+   489→  statusCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusFill } };
+   490→  statusCell.font = {
+   491→    name: "Inter", size: 10, bold: true,
+   492→    color: { argb: STATUS_TEXT[item.status] ?? THEME.textHi },
+   493→  };
+   494→  statusCell.alignment = { horizontal: "center", vertical: "middle" };
+   495→
+   496→  // Color-code condition cell (column 10)
+   497→  const condCell = ws.getCell(row, 10);
+   498→  const condFill = STATUS_FILL[item.condition] ?? THEME.bg1;
+   499→  condCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: condFill } };
+   500→  condCell.font = {
+   501→    name: "Inter", size: 10, bold: true,
+   502→    color: { argb: STATUS_TEXT[item.condition] ?? THEME.textHi },
+   503→  };
+   504→  condCell.alignment = { horizontal: "center", vertical: "middle" };
+   505→
+   506→  ws.getRow(row).height = rowHeight;
+   507→}
+   508→
+   509→// Column definitions for writeItemRow
+   510→const columns = [
+   511→  { key: "photo" }, { key: "code" }, { key: "name" }, { key: "brand" },
+   512→  { key: "model" }, { key: "serial" }, { key: "category" }, { key: "type" },
+   513→  { key: "status" }, { key: "condition" }, { key: "qty" }, { key: "min" },
+   514→  { key: "homeLoc" }, { key: "homeParent" }, { key: "currLoc" }, { key: "currParent" },
+   515→  { key: "holder" }, { key: "returnDate" }, { key: "created" }, { key: "createdBy" },
+   516→  { key: "updated" }, { key: "updatedBy" }, { key: "notes" },
+   517→];
+   518→
+   519→// ── Sheet 3: Locations Summary ──────────────────────────────────────────
+   520→function buildLocationsSheet(workbook: any, locations: ExportLocation[]) {
+   521→  const ws = workbook.addWorksheet("Locations", {
+   522→    properties: { tabColor: THEME.teal.slice(2) },
+   523→  });
+   524→
+   525→  ws.views = [{ showGridLines: false }];
+   526→
+   527→  ws.columns = [
+   528→    { width: 4 }, { width: 22 }, { width: 10 }, { width: 16 },
+   529→    { width: 8 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 },
+   530→  ];
+   531→
+   532→  // Header
+   533→  const headers = ["", "Name", "Kind", "Parent", "Items", "Direct", "Home", "Away", "Children"];
+   534→  for (let c = 1; c <= headers.length; c++) {
+   535→    const cell = ws.getCell(1, c);
+   536→    cell.value = headers[c - 1];
+   537→    cell.font = { name: "Inter", size: 9, bold: true, color: { argb: THEME.textLow } };
+   538→    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.glassStrong } };
+   539→    cell.alignment = { horizontal: "center", vertical: "middle" };
+   540→    cell.border = {
+   541→      top: { style: "thin", color: { argb: THEME.hairline } },
+   542→      bottom: { style: "thin", color: { argb: THEME.hairline } },
+   543→    };
+   544→  }
+   545→  ws.getRow(1).height = 22;
+   546→
+   547→  // Sort: roots first, then by name
+   548→  const sorted = [...locations].sort((a, b) => {
+   549→    if (!a.parentLocationId && b.parentLocationId) return -1;
+   550→    if (a.parentLocationId && !b.parentLocationId) return 1;
+   551→    return a.name.localeCompare(b.name);
+   552→  });
+   553→
+   554→  sorted.forEach((loc, i) => {
+   555→    const row = i + 2;
+   556→    const isAlt = row % 2 === 0;
+   557→    const rowBg = isAlt ? THEME.bg0 : THEME.glass;
+   558→    const indent = loc.parentLocationId ? 1 : 0;
+   559→
+   560→    const values = [
+   561→      "",
+   562→      loc.name,
+   563→      loc.kind,
+   564→      loc.parentName ?? "—",
+   565→      loc.itemCount,
+   566→      loc.directItemCount,
+   567→      loc.homeItemCount,
+   568→      loc.awayCount,
+   569→      loc.childrenCount,
+   570→    ];
+   571→
+   572→    for (let c = 1; c <= values.length; c++) {
+   573→      const cell = ws.getCell(row, c);
+   574→      cell.value = values[c - 1];
+   575→      cell.font = {
+   576→        name: "Inter", size: 10,
+   577→        color: { argb: loc.parentLocationId ? THEME.textMid : THEME.textHi },
+   578→      };
+   579→      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
+   580→      cell.alignment = {
+   581→        vertical: "middle",
+   582→        horizontal: c >= 5 ? "center" : "left",
+   583→        indent: c === 2 ? indent : 0,
+   584→      };
+   585→      cell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
+   586→    }
+   587→
+   588→    // Highlight items count in teal
+   589→    const itemsCell = ws.getCell(row, 5);
+   590→    itemsCell.font = { name: "Space Grotesk", size: 11, bold: true, color: { argb: THEME.teal } };
+   591→
+   592→    ws.getRow(row).height = 24;
+   593→  });
+   594→
+   595→  // Fill background
+   596→  const maxRow = sorted.length + 1;
+   597→  for (let r = 1; r <= maxRow; r++) {
+   598→    for (let c = 1; c <= 9; c++) {
+   599→      const cell = ws.getCell(r, c);
+   600→      if (!cell.fill || cell.fill.type !== "pattern") {
+   601→        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg0 } };
+   602→      }
+   603→    }
+   604→  }
+   605→}
+   606→
+   607→// ── Sheet 4: Activity Log ───────────────────────────────────────────────
+   608→function buildActivitySheet(workbook: any, transactions: ExportTransaction[]) {
+   609→  const ws = workbook.addWorksheet("Activity", {
+   610→    properties: { tabColor: THEME.teal.slice(2) },
+   611→  });
+   612→
+   613→  ws.views = [{ showGridLines: false }];
+   614→
+   615→  ws.columns = [
+   616→    { width: 4 }, { width: 18 }, { width: 14 }, { width: 12 },
+   617→    { width: 22 }, { width: 16 }, { width: 16 }, { width: 16 },
+   618→    { width: 16 }, { width: 8 }, { width: 30 },
+   619→  ];
+   620→
+   621→  // Header
+   622→  const headers = [
+   623→    "", "Date", "Time", "Action", "Item", "Code",
+   624→    "Person", "Holder", "From → To", "Qty", "Note",
+   625→  ];
+   626→  for (let c = 1; c <= headers.length; c++) {
+   627→    const cell = ws.getCell(1, c);
+   628→    cell.value = headers[c - 1];
+   629→    cell.font = { name: "Inter", size: 9, bold: true, color: { argb: THEME.textLow } };
+   630→    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.glassStrong } };
+   631→    cell.alignment = { horizontal: "center", vertical: "middle" };
+   632→    cell.border = {
+   633→      top: { style: "thin", color: { argb: THEME.hairline } },
+   634→      bottom: { style: "thin", color: { argb: THEME.hairline } },
+   635→    };
+   636→  }
+   637→  ws.getRow(1).height = 22;
+   638→
+   639→  const ACTION_COLORS: Record<string, string> = {
+   640→    add: THEME.teal,
+   641→    checkout: THEME.gold,
+   642→    checkin: THEME.teal,
+   643→    move: THEME.teal,
+   644→    adjust_qty: THEME.tealBright,
+   645→    condition: THEME.magenta,
+   646→    edit: THEME.textLow,
+   647→    delete: THEME.danger,
+   648→    restore: THEME.teal,
+   649→    maintenance: THEME.magenta,
+   650→  };
+   651→
+   652→  transactions.forEach((tx, i) => {
+   653→    const row = i + 2;
+   654→    const isAlt = row % 2 === 0;
+   655→    const rowBg = isAlt ? THEME.bg0 : THEME.glass;
+   656→    const date = new Date(tx.createdAt);
+   657→
+   658→    const fromTo = [tx.fromLocationName, tx.toLocationName]
+   659→      .filter(Boolean)
+   660→      .join(" → ");
+   661→
+   662→    const values = [
+   663→      "",
+   664→      date.toLocaleDateString("en-SG", { day: "numeric", month: "short", year: "numeric" }),
+   665→      date.toLocaleTimeString("en-SG", { hour: "2-digit", minute: "2-digit", hour12: false }),
+   666→      tx.action.replace(/_/g, " "),
+   667→      tx.itemName ?? "—",
+   668→      tx.itemCode ?? "—",
+   669→      tx.personName ?? "—",
+   670→      tx.holderName ?? "",
+   671→      fromTo,
+   672→      tx.qtyDelta !== null ? (tx.qtyDelta > 0 ? `+${tx.qtyDelta}` : `${tx.qtyDelta}`) : "",
+   673→      tx.note ?? "",
+   674→    ];
+   675→
+   676→    for (let c = 1; c <= values.length; c++) {
+   677→      const cell = ws.getCell(row, c);
+   678→      cell.value = values[c - 1];
+   679→      cell.font = { name: "Inter", size: 10, color: { argb: THEME.textHi } };
+   680→      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: rowBg } };
+   681→      cell.alignment = { vertical: "middle", wrapText: false };
+   682→      cell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
+   683→    }
+   684→
+   685→    // Color-code action cell
+   686→    const actionCell = ws.getCell(row, 4);
+   687→    const actionColor = ACTION_COLORS[tx.action] ?? THEME.textLow;
+   688→    actionCell.font = { name: "Inter", size: 10, bold: true, color: { argb: actionColor } };
+   689→
+   690→    // Color-code item code
+   691→    const codeCell = ws.getCell(row, 6);
+   692→    codeCell.font = { name: "Inter", size: 10, color: { argb: THEME.teal } };
+   693→
+   694→    ws.getRow(row).height = 20;
+   695→  });
+   696→
+   697→  // Fill background
+   698→  const maxRow = transactions.length + 1;
+   699→  for (let r = 1; r <= maxRow; r++) {
+   700→    for (let c = 1; c <= 11; c++) {
+   701→      const cell = ws.getCell(r, c);
+   702→      if (!cell.fill || cell.fill.type !== "pattern") {
+   703→        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg0 } };
+   704→      }
+   705→    }
+   706→  }
+   707→}
+   708→
+   709→// ── Filename helper ─────────────────────────────────────────────────────
+   710→export function buildExportFilename(filterName: string): string {
+   711→  const date = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+   712→  return `tooldeckitems.${filterName}.${date}.xlsx`;
+   713→}
+   714→

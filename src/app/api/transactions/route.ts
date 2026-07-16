@@ -108,7 +108,7 @@ export async function DELETE(req: Request) {
     where.createdAt = { lt: date };
   } else if (olderThanDays) {
     const days = parseInt(olderThanDays, 10);
-    if (isNaN(days) || days < 0) {
+    if (isNaN(days) || days < 1) {
       return NextResponse.json(
         { error: "Invalid 'olderThanDays' value." },
         { status: 400 }

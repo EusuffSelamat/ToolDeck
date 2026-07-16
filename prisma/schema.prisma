@@ -6,7 +6,7 @@
 //      maintenance_logs  ✅
 
 generator client {
-  provider = "prisma-client-js"
+  provider = "postgresql"   # change from "sqlite" to "postgresql"
 }
 
 datasource db {

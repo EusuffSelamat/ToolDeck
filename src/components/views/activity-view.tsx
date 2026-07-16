@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Activity as ActivityIcon, Package, X } from "lucide-react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Activity as ActivityIcon, Package, X, Trash2, ChevronDown, AlertTriangle, Loader2 } from "lucide-react";
 import { useHashRoute } from "@/hooks/use-hash-route";
+import { useToast } from "@/hooks/use-toast";
 import { StatusPill } from "@/components/status-pill";
 
 type Transaction = {
@@ -37,16 +38,36 @@ const ACTION_FILTERS = [
   { value: "restore", label: "Restored" },
 ];
 
+const LIMIT_OPTIONS = [
+  { value: "50", label: "Last 50" },
+  { value: "100", label: "Last 100" },
+  { value: "500", label: "Last 500" },
+  { value: "1000", label: "Last 1,000" },
+  { value: "10000", label: "All" },
+];
+
+const PURGE_OPTIONS = [
+  { value: "7", label: "Older than 7 days" },
+  { value: "30", label: "Older than 30 days" },
+  { value: "90", label: "Older than 90 days" },
+  { value: "all", label: "Delete ALL activity" },
+];
+
 export function ActivityView() {
   const [, navigate] = useHashRoute();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [activeAction, setActiveAction] = useState<string | null>(null);
+  const [limit, setLimit] = useState("100");
+  const [showPurgeMenu, setShowPurgeMenu] = useState(false);
+  const [purgeBusy, setPurgeBusy] = useState(false);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
     if (activeAction) params.set("action", activeAction);
-    params.set("limit", "100");
+    params.set("limit", limit);
     return params.toString();
-  }, [activeAction]);
+  }, [activeAction, limit]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["transactions", queryString],
@@ -71,13 +92,114 @@ export function ActivityView() {
     return groups;
   }, [transactions]);
 
+  async function handlePurge(scope: string) {
+    setShowPurgeMenu(false);
+    const confirmed = window.confirm(
+      scope === "all"
+        ? "Delete ALL activity logs permanently? This cannot be undone."
+        : `Delete activity logs ${scope}? This cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    setPurgeBusy(true);
+    try {
+      const params = scope === "all" ? "" : `?olderThanDays=${scope}`;
+      const res = await fetch(`/api/transactions${params}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Delete failed", description: err.error ?? "Please try again." });
+        setPurgeBusy(false);
+        return;
+      }
+      const data = await res.json();
+      qc.invalidateQueries({ queryKey: ["transactions"] });
+      qc.invalidateQueries({ queryKey: ["stats"] });
+      toast({
+        title: "Activity cleared",
+        description: `${data.deleted} log${data.deleted === 1 ? "" : "s"} deleted (${data.scope}).`,
+      });
+    } catch {
+      toast({ title: "Delete failed", description: "Please try again." });
+    } finally {
+      setPurgeBusy(false);
+    }
+  }
+
   return (
     <div className="px-5 pt-4">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold">Activity</h1>
-        <p className="micro-label mt-1">
-          {transactions.length} {transactions.length === 1 ? "event" : "events"}
-        </p>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Activity</h1>
+          <p className="micro-label mt-1">
+            {transactions.length} {transactions.length === 1 ? "event" : "events"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Limit dropdown */}
+          <div className="relative">
+            <select
+              value={limit}
+              onChange={(e) => setLimit(e.target.value)}
+              className="btn-ghost-teal flex h-9 cursor-pointer items-center gap-1 rounded-full px-3 text-xs font-medium appearance-none pr-7"
+              style={{ color: "var(--color-text-mid)" }}
+            >
+              {LIMIT_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value} style={{ background: "var(--color-bg-1)" }}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              size={12}
+              className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2"
+              style={{ color: "var(--color-text-low)" }}
+            />
+          </div>
+
+          {/* Purge dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowPurgeMenu(!showPurgeMenu)}
+              disabled={purgeBusy}
+              className="flex h-9 w-9 items-center justify-center rounded-full transition-colors hover:bg-[rgba(224,86,107,0.1)] disabled:opacity-40"
+              style={{
+                border: "1px solid rgba(224,86,107,0.3)",
+                color: "var(--color-danger)",
+              }}
+              aria-label="Delete activity logs"
+            >
+              {purgeBusy ? <Loader2 size={15} className="animate-spin" /> : <Trash2 size={15} />}
+            </button>
+            {showPurgeMenu && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setShowPurgeMenu(false)} />
+                <div
+                  className="glass-strong absolute right-0 top-12 z-50 w-52 rounded-xl p-2"
+                  style={{ border: "1px solid var(--color-border)" }}
+                >
+                  <div className="flex items-center gap-1.5 px-3 py-1.5">
+                    <AlertTriangle size={12} style={{ color: "var(--color-danger)" }} />
+                    <span className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--color-danger)" }}>
+                      Permanent delete
+                    </span>
+                  </div>
+                  <div className="my-1 h-px" style={{ background: "var(--color-border)" }} />
+                  {PURGE_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => handlePurge(opt.value)}
+                      className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-[rgba(224,86,107,0.06)]"
+                      style={{ color: opt.value === "all" ? "var(--color-danger)" : "var(--color-text-hi)" }}
+                    >
+                      <Trash2 size={13} />
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Action filter chips */}

@@ -475,3 +475,31 @@ VERIFICATION:
 - ✅ Lint clean
 
 Architecture note: ExcelJS is dynamically imported (`await import("exceljs")`) so the ~1.5MB library only loads when the user clicks "Themed Excel" — the initial page bundle is unaffected.
+
+---
+Task ID: EXPORT-FIXES+ACTIVITY-MGMT
+Agent: GLM (main)
+Task: Fix Excel export bugs (column shift, color coding, photo links) + add activity log management (count filter + permanent delete).
+
+Work Log:
+**Excel Export Fixes:**
+- **Column shift bug (CRITICAL)**: The Items sheet data loop used `columns[c-2].key` instead of `columns[c-1].key`. Since column 1 (Photo) is handled separately, column 2 should map to `columns[1]` (Code), not `columns[0]` (Photo). This caused every data value to be shifted one column to the right — Code appeared under the Name header, Name under Brand, etc. Fixed by changing the index from `c-2` to `c-1`.
+- **Condition "good" color missing**: `STATUS_FILL` had no entry for "good" condition — it fell back to the default background. Added `good: THEME.teal` to both `STATUS_FILL` and `STATUS_TEXT` so the "Good" condition cell shows teal with dark text.
+- **Summary sheet bar chart confusion**: The bar chart used a loop filling 20 cells across 5 columns (D-H) with `tealDeep` or `bg1` — confusing because cells D13, D14 etc. showed unexpected colors. Replaced with a single merged cell (D-G) containing a Unicode block-character bar (`████████░░░░░░░░░░░░`) in teal on a tealDeep background. Clean, proportional, no confusing cell fills.
+- **Photo hyperlinks not clickable**: Photo URLs were relative (`/item-photos/AST-0005.jpg`) — Excel can't open relative URLs. Fixed by prepending `window.location.origin` to make them absolute (`http://localhost:3000/item-photos/AST-0005.jpg`). Now clicking "📷 View" in Excel opens the photo in a browser.
+
+**Activity Log Management:**
+- **DELETE /api/transactions**: New endpoint that permanently deletes transaction records. Supports `?olderThanDays=N` (delete logs older than N days) or no params (delete ALL). Returns `{ deleted, scope }`. Auth-gated.
+- **GET /api/transactions**: Now supports up to 10,000 results (was 200) for the "All" filter.
+- **Activity view — limit dropdown**: Added a dropdown in the header with options: Last 50, Last 100, Last 500, Last 1,000, All. Default is 100. Changing it immediately refetches with the new limit.
+- **Activity view — purge menu**: Added a red trash button next to the limit dropdown. Opens a dropdown with 4 options: "Older than 7 days", "Older than 30 days", "Older than 90 days", "Delete ALL activity". Each option shows a `window.confirm()` warning before deleting. On success, invalidates the transactions + stats queries and shows a toast with the count.
+
+VERIFICATION:
+- ✅ Items sheet column alignment fixed — Code under Code header, Name under Name header, etc.
+- ✅ Condition "good" now shows teal fill
+- ✅ Summary sheet category bars render cleanly (no confusing cell colors)
+- ✅ Photo hyperlinks use absolute URLs (clickable in Excel)
+- ✅ Themed export completes successfully (no errors)
+- ✅ Activity limit dropdown works (changed to "Last 500" → showed 70 events)
+- ✅ Purge menu shows all 4 options (7 days, 30 days, 90 days, ALL)
+- ✅ Lint clean, no runtime errors

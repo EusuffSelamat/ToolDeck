@@ -36,6 +36,8 @@ const STATUS_FILL: Record<string, string> = {
   checked_out: THEME.gold,
   needs_service: THEME.magenta,
   out_of_order: THEME.danger,
+  // Condition values (shared mapping)
+  good: THEME.teal,
 };
 
 const STATUS_TEXT: Record<string, string> = {
@@ -43,6 +45,7 @@ const STATUS_TEXT: Record<string, string> = {
   checked_out: "FF04211D",
   needs_service: "FFEAF7F4",
   out_of_order: "FFEAF7F4",
+  good: "FF04211D",
 };
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -258,24 +261,29 @@ function buildSummarySheet(workbook: any, data: ExportData) {
     nameCell.value = cat.name;
     nameCell.font = { name: "Inter", size: 11, color: { argb: THEME.textHi } };
     nameCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg1 } };
+    nameCell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
 
     const countCell = ws.getCell(row, 3);
     countCell.value = cat.count;
     countCell.font = { name: "Space Grotesk", size: 12, bold: true, color: { argb: THEME.teal } };
     countCell.alignment = { horizontal: "center" };
     countCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg1 } };
+    countCell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
 
-    // Bar chart (visual via cell fill)
+    // Visual bar — single merged cell with proportional fill
     const maxCount = data.stats.byCategory[0]?.count || 1;
-    const barLength = Math.ceil((cat.count / maxCount) * 20);
-    for (let c = 0; c < 20; c++) {
-      const barCell = ws.getCell(row, 4 + Math.floor(c / 4));
-      if (c < barLength) {
-        barCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.tealDeep } };
-      } else {
-        barCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.bg1 } };
-      }
-    }
+    const barPct = (cat.count / maxCount);
+    ws.mergeCells(row, 4, row, 7);
+    const barCell = ws.getCell(row, 4);
+    barCell.value = "";
+    barCell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME.tealDeep } };
+    barCell.border = { bottom: { style: "hair", color: { argb: THEME.hairline } } };
+
+    // Overlay a proportional fill by setting the cell value to a bar string
+    const barChars = Math.round(barPct * 20);
+    barCell.value = "█".repeat(barChars) + "░".repeat(20 - barChars);
+    barCell.font = { name: "Inter", size: 9, color: { argb: THEME.teal } };
+    barCell.alignment = { horizontal: "left", vertical: "middle" };
   });
 
   // Fill background for all used cells
@@ -418,11 +426,13 @@ function writeItemRow(
   const rowBg = isAlt ? THEME.bg0 : THEME.glass;
   const rowHeight = 28;
 
-  // Photo: include as a clickable hyperlink (exceljs browser image embedding
-  // is unreliable — hyperlinks are zero file size and always work)
+  // Photo: include as a clickable hyperlink — must be absolute URL for Excel
   if (item.photoUrl) {
     const photoCell = ws.getCell(row, 1);
-    photoCell.value = { text: "📷 View", hyperlink: item.photoUrl };
+    const absoluteUrl = item.photoUrl.startsWith("http")
+      ? item.photoUrl
+      : `${window.location.origin}${item.photoUrl}`;
+    photoCell.value = { text: "📷 View", hyperlink: absoluteUrl };
     photoCell.font = { name: "Inter", size: 9, color: { argb: THEME.teal }, underline: true };
     photoCell.alignment = { horizontal: "center", vertical: "middle" };
   }
@@ -456,7 +466,8 @@ function writeItemRow(
 
   for (let c = 2; c <= 23; c++) {
     const cell = ws.getCell(row, c);
-    const key = columns[c - 2]?.key;
+    // Column 1 = Photo (handled above), so column 2 = columns[1] (Code)
+    const key = columns[c - 1]?.key;
     if (key && key in values) {
       cell.value = values[key];
     }

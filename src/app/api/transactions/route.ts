@@ -6,14 +6,10 @@ import { requireAuth } from "@/lib/require-auth";
  * GET /api/transactions — reverse-chronological audit trail feed (§7.9).
  *
  * Query params:
- *   - action: filter by action type (add, checkout, checkin, move, adjust_qty, condition, edit, delete, restore)
+ *   - action: filter by action type
  *   - personId: filter by who performed the action
  *   - itemId: filter to a specific item
- *   - limit: max results (default 50, max 200)
- *
- * Returns transactions with item, person, holder, from/to location context —
- * enough to render human-readable sentences like:
- *   "Sarah checked out AST-0042 Angle grinder → Site B · yesterday 16:20"
+ *   - limit: max results (default 50, max 10000 for exports)
  */
 export async function GET(req: Request) {
   const session = await requireAuth();
@@ -77,4 +73,59 @@ export async function GET(req: Request) {
   }));
 
   return NextResponse.json({ transactions: result });
+}
+
+/**
+ * DELETE /api/transactions — permanently delete transaction records.
+ * This is a destructive, irreversible action. The audit trail is cleared.
+ * Items themselves are NOT affected — only the transaction history.
+ *
+ * Optional query params:
+ *   - before=ISO_DATE — only delete transactions older than this date
+ *   - olderThanDays=N — only delete transactions older than N days
+ *   - (no params) — delete ALL transactions
+ */
+export async function DELETE(req: Request) {
+  const session = await requireAuth();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const url = new URL(req.url);
+  const before = url.searchParams.get("before");
+  const olderThanDays = url.searchParams.get("olderThanDays");
+
+  let where: Record<string, unknown> = {};
+
+  if (before) {
+    const date = new Date(before);
+    if (isNaN(date.getTime())) {
+      return NextResponse.json(
+        { error: "Invalid 'before' date." },
+        { status: 400 }
+      );
+    }
+    where.createdAt = { lt: date };
+  } else if (olderThanDays) {
+    const days = parseInt(olderThanDays, 10);
+    if (isNaN(days) || days < 0) {
+      return NextResponse.json(
+        { error: "Invalid 'olderThanDays' value." },
+        { status: 400 }
+      );
+    }
+    const cutoff = new Date(Date.now() - days * 86400000);
+    where.createdAt = { lt: cutoff };
+  }
+
+  const result = await db.transaction.deleteMany({ where });
+
+  return NextResponse.json({
+    deleted: result.count,
+    scope: before
+      ? `before ${new Date(before).toLocaleDateString("en-SG")}`
+      : olderThanDays
+      ? `older than ${olderThanDays} days`
+      : "all",
+  });
 }

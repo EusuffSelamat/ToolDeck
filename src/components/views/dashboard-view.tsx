@@ -125,14 +125,14 @@ export function DashboardView() {
       <AccountsPanel />
 
       {/* Row 1 — Stat pills */}
-      <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-2">
+      <div className="grid grid-cols-2 gap-3">
         {STAT_DEFS.map((s) => {
           const Icon = s.icon;
           const value = stats ? stats[s.key] : null;
           return (
             <div
               key={s.key}
-              className="glass-card flex min-w-[120px] flex-col gap-2 px-4 py-3"
+              className="glass-card flex min-w-0 flex-col gap-2 px-4 py-3"
             >
               <div className="flex items-center justify-between">
                 <span className="micro-label">{s.label}</span>

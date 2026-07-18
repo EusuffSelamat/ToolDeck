@@ -69,3 +69,58 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true, user: updated });
 }
+
+// DELETE /api/admin/users/[id]
+// Admin-only. Permanently delete an account. Same guards as PATCH: never
+// self, never another admin. Blocked while the user still holds checked-out
+// items (they must be returned first, or the items would be left in a
+// checked-out state with no holder). Audit-trail rows survive — the User
+// foreign keys are optional and null out on delete (Prisma SetNull default).
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await requireAdmin();
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+
+  if (id === session.user.id) {
+    return NextResponse.json(
+      { error: "You cannot delete your own account." },
+      { status: 400 }
+    );
+  }
+
+  const target = await db.user.findUnique({
+    where: { id },
+    select: {
+      role: true,
+      fullName: true,
+      _count: { select: { heldItems: { where: { isDeleted: false } } } },
+    },
+  });
+  if (!target) {
+    return NextResponse.json({ error: "User not found." }, { status: 404 });
+  }
+  if (target.role === "admin") {
+    return NextResponse.json(
+      { error: "Admin accounts cannot be deleted here." },
+      { status: 403 }
+    );
+  }
+  if (target._count.heldItems > 0) {
+    return NextResponse.json(
+      {
+        error: `${target.fullName} still holds ${target._count.heldItems} checked-out item(s). Return them first.`,
+      },
+      { status: 409 }
+    );
+  }
+
+  await db.user.delete({ where: { id } });
+
+  return NextResponse.json({ ok: true });
+}

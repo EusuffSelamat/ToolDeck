@@ -27,6 +27,7 @@ import {
   X,
   Loader2,
   ChevronDown,
+  Trash2,
 } from "lucide-react";
 import { useState } from "react";
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
@@ -567,8 +568,8 @@ function PendingApprovals() {
 }
 
 // ── Accounts panel (admin only) ─────────────────────────────────────────
-// Lists every registered account. Approved non-admin accounts get a
-// Worker/Manager toggle; admin accounts are read-only (managed manually).
+// Lists every registered account. Non-admin accounts get a role toggle and
+// a delete button; admin accounts are read-only (managed manually).
 function AccountsPanel() {
   const role = useRole();
   const qc = useQueryClient();
@@ -607,6 +608,28 @@ function AccountsPanel() {
       qc.invalidateQueries({ queryKey: ["all-users"] });
     } catch {
       toast({ title: "Role change failed", description: "Please try again." });
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  async function deleteUser(id: string, name: string) {
+    if (!window.confirm(`Delete ${name}'s account permanently? This cannot be undone.`)) {
+      return;
+    }
+    setActingId(id);
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Delete failed", description: err.error ?? "Please try again." });
+        return;
+      }
+      toast({ title: "Account deleted", description: name });
+      qc.invalidateQueries({ queryKey: ["all-users"] });
+      qc.invalidateQueries({ queryKey: ["pending-users"] });
+    } catch {
+      toast({ title: "Delete failed", description: "Please try again." });
     } finally {
       setActingId(null);
     }
@@ -709,6 +732,22 @@ function AccountsPanel() {
                         );
                       })}
                     </div>
+                  )}
+                  {!isAdminUser && (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => deleteUser(u.id, u.fullName)}
+                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-50 hover:bg-[rgba(224,86,107,0.12)]"
+                      style={{
+                        border: "1px solid rgba(224,86,107,0.4)",
+                        color: "var(--color-danger)",
+                      }}
+                      aria-label={`Delete ${u.fullName}`}
+                      title="Delete account"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   )}
                 </div>
               );

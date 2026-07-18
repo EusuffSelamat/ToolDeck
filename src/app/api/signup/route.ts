@@ -27,6 +27,8 @@ export async function POST(req: Request) {
   const passwordHash = await bcrypt.hash(password, 12);
 
   try {
+    // New accounts start as 'pending' (schema default) — an admin must
+    // approve them from the dashboard before they can sign in.
     await db.user.create({
       data: { email: lower, fullName: name.trim(), passwordHash },
     });
@@ -44,5 +46,7 @@ export async function POST(req: Request) {
     );
   }
 
-  return NextResponse.json({ ok: true });
+  // pending: true tells the client to show an "awaiting approval" message
+  // and NOT attempt to auto sign-in (which would fail the approval gate).
+  return NextResponse.json({ ok: true, pending: true });
 }

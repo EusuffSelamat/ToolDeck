@@ -12,6 +12,7 @@ export function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(() => {
     // Read error from URL query param (set by NextAuth on failed sign-in
     // when using redirect: true)
@@ -22,6 +23,10 @@ export function AuthScreen() {
       // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
       if (errParam === "CredentialsSignin") return "Wrong email or password.";
+      if (errParam === "PENDING_APPROVAL")
+        return "Please wait for approval for access to the app, you will be notified via email.";
+      if (errParam === "ACCOUNT_REJECTED")
+        return "Your account request was declined. Please contact your administrator.";
       return "Sign-in failed. Please try again.";
     }
     return null;
@@ -31,6 +36,7 @@ export function AuthScreen() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setNotice(null);
     setBusy(true);
 
     try {
@@ -46,10 +52,21 @@ export function AuthScreen() {
           setBusy(false);
           return;
         }
+
+        // New accounts require admin approval before sign-in. Don't attempt
+        // to log in (it would fail the approval gate). Show a notice and
+        // switch the user to the Sign-in tab.
         toast({
           title: "Account created",
-          description: "Welcome to TOOLDECK.",
+          description: "Please wait for approval for access to the app, you will be notified via email.",
         });
+        setMode("login");
+        setPassword("");
+        setNotice(
+          "Please wait for approval for access to the app, you will be notified via email."
+        );
+        setBusy(false);
+        return;
       }
 
       // Use redirect: true — this does a full form submission (not fetch),
@@ -85,13 +102,27 @@ export function AuthScreen() {
 
       <div className="glass-card w-full max-w-sm p-6">
         <div className="mb-6 flex items-center gap-1 rounded-full p-1" style={{ border: "1px solid var(--color-border)" }}>
-          <TabButton active={mode === "login"} onClick={() => { setMode("login"); setError(null); }}>
+          <TabButton active={mode === "login"} onClick={() => { setMode("login"); setError(null); setNotice(null); }}>
             Sign in
           </TabButton>
-          <TabButton active={mode === "signup"} onClick={() => { setMode("signup"); setError(null); }}>
+          <TabButton active={mode === "signup"} onClick={() => { setMode("signup"); setError(null); setNotice(null); }}>
             Create account
           </TabButton>
         </div>
+
+        {notice && (
+          <div
+            className="mb-4 rounded-xl px-3.5 py-3 text-sm"
+            style={{
+              border: "1px solid rgba(25,227,196,0.35)",
+              background: "rgba(14,79,74,0.18)",
+              color: "var(--color-text-hi)",
+            }}
+            role="status"
+          >
+            {notice}
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           {mode === "signup" && (

@@ -22,8 +22,24 @@ export const authOptions: NextAuthOptions = {
           if (!user) return null;
           const ok = await bcrypt.compare(credentials.password, user.passwordHash);
           if (!ok) return null;
+
+          // Admin approval gate. Admins always bypass (they are provisioned
+          // manually and must never be locked out). Everyone else must be
+          // 'approved'. Throwing here surfaces a specific reason to the
+          // sign-in screen via ?error=<message>.
+          if (user.role !== "admin" && user.approvalStatus !== "approved") {
+            throw new Error(
+              user.approvalStatus === "rejected" ? "ACCOUNT_REJECTED" : "PENDING_APPROVAL"
+            );
+          }
+
           return { id: user.id, name: user.fullName, email: user.email, role: user.role };
         } catch (e) {
+          // Re-throw our approval-gate signals so NextAuth forwards them as
+          // the ?error= param; swallow only genuine/unexpected errors.
+          if (e instanceof Error && (e.message === "PENDING_APPROVAL" || e.message === "ACCOUNT_REJECTED")) {
+            throw e;
+          }
           console.error("Auth authorize error:", e);
           return null;
         }

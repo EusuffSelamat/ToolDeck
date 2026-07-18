@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   PieChart,
   Pie,
@@ -21,9 +21,16 @@ import {
   DoorOpen,
   Truck,
   Wrench,
+  UserCheck,
+  Check,
+  X,
+  Loader2,
 } from "lucide-react";
+import { useState } from "react";
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
 import { setLocationFilter } from "@/lib/location-filter";
+import { useRole } from "@/hooks/use-role";
+import { useToast } from "@/hooks/use-toast";
 
 type Stats = {
   totalItems: number;
@@ -105,6 +112,9 @@ export function DashboardView() {
         <h1 className="text-2xl font-bold">Dashboard</h1>
         <p className="micro-label mt-1">Live overview</p>
       </div>
+
+      {/* Pending approvals — admin only */}
+      <PendingApprovals />
 
       {/* Row 1 — Stat pills */}
       <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-2">
@@ -394,6 +404,151 @@ export function DashboardView() {
           >
             Open Scan
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Pending approvals (admin only) ──────────────────────────────────────
+type PendingUser = {
+  id: string;
+  fullName: string;
+  email: string;
+  role: string;
+  approvalStatus: string;
+  createdAt: string;
+};
+
+function PendingApprovals() {
+  const role = useRole();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["pending-users"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users?status=pending");
+      if (!res.ok) throw new Error("Failed to load pending users");
+      return res.json() as Promise<{ users: PendingUser[] }>;
+    },
+    enabled: role === "admin",
+    refetchInterval: 30_000,
+  });
+
+  // Only admins see this panel at all.
+  if (role !== "admin") return null;
+
+  const users = data?.users ?? [];
+
+  // Hide the panel entirely when there's nothing to review (once loaded).
+  if (!isLoading && users.length === 0) return null;
+
+  async function act(id: string, action: "approve" | "reject", name: string) {
+    setActingId(id);
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Action failed", description: err.error ?? "Please try again." });
+        return;
+      }
+      toast({
+        title: action === "approve" ? "Account approved" : "Account rejected",
+        description: name,
+      });
+      qc.invalidateQueries({ queryKey: ["pending-users"] });
+    } catch {
+      toast({ title: "Action failed", description: "Please try again." });
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  return (
+    <div
+      className="glass-card mb-4 p-4"
+      style={{ borderColor: "rgba(201,160,99,0.35)" }}
+    >
+      <div className="mb-3 flex items-center gap-2">
+        <UserCheck size={14} style={{ color: "var(--color-gold)" }} />
+        <span className="micro-label">Pending approvals</span>
+        {users.length > 0 && (
+          <span className="micro-label" style={{ color: "var(--color-gold)" }}>
+            · {users.length}
+          </span>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-4">
+          <Loader2 size={16} className="animate-spin" style={{ color: "var(--color-text-low)" }} />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {users.map((u) => {
+            const busy = actingId === u.id;
+            return (
+              <div
+                key={u.id}
+                className="flex items-center gap-2 rounded-xl p-2"
+                style={{ background: "rgba(255,255,255,0.02)" }}
+              >
+                <span
+                  className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
+                  style={{
+                    border: "1px solid rgba(201,160,99,0.4)",
+                    color: "var(--color-gold)",
+                    background: "rgba(201,160,99,0.12)",
+                  }}
+                >
+                  {u.fullName?.[0]?.toUpperCase() ?? "?"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className="truncate text-sm font-medium"
+                    style={{ color: "var(--color-text-hi)" }}
+                  >
+                    {u.fullName}
+                  </p>
+                  <p className="truncate text-xs" style={{ color: "var(--color-text-low)" }}>
+                    {u.email}
+                  </p>
+                </div>
+                <button
+                  onClick={() => act(u.id, "approve", u.fullName)}
+                  disabled={busy}
+                  className="flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-50 hover:bg-[rgba(25,227,196,0.12)]"
+                  style={{
+                    border: "1px solid rgba(25,227,196,0.4)",
+                    color: "var(--color-teal)",
+                  }}
+                  aria-label={`Approve ${u.fullName}`}
+                  title="Allow"
+                >
+                  {busy ? <Loader2 size={14} className="animate-spin" /> : <Check size={15} />}
+                </button>
+                <button
+                  onClick={() => act(u.id, "reject", u.fullName)}
+                  disabled={busy}
+                  className="flex h-8 w-8 items-center justify-center rounded-full transition-colors disabled:opacity-50 hover:bg-[rgba(224,86,107,0.12)]"
+                  style={{
+                    border: "1px solid rgba(224,86,107,0.4)",
+                    color: "var(--color-danger)",
+                  }}
+                  aria-label={`Reject ${u.fullName}`}
+                  title="Reject"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

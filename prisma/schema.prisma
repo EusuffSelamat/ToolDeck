@@ -23,6 +23,10 @@ model User {
   fullName     String
   passwordHash String
   role         String   @default("worker") // 'admin' | 'worker'
+  // Admin approval gate: new sign-ups start as 'pending' and cannot log in
+  // until an admin approves them from the dashboard. 'rejected' users are
+  // blocked. Admins (role='admin') bypass this check entirely.
+  approvalStatus String @default("pending") // 'pending' | 'approved' | 'rejected'
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

@@ -28,6 +28,8 @@ import {
   Loader2,
   ChevronDown,
   Trash2,
+  Search,
+  Lock,
 } from "lucide-react";
 import { useState } from "react";
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
@@ -97,6 +99,21 @@ const KIND_ICON: Record<string, typeof Building2> = {
   vehicle: Truck,
 };
 
+// Accounts panel — role grouping order + per-role accent colour.
+const ROLE_GROUPS = [
+  { key: "admin", label: "Admins" },
+  { key: "manager", label: "Managers" },
+  { key: "worker", label: "Workers" },
+  { key: "viewer", label: "Viewers" },
+] as const;
+
+const ROLE_COLOR: Record<string, string> = {
+  admin: "var(--color-gold)",
+  manager: "var(--color-magenta)",
+  worker: "var(--color-teal)",
+  viewer: "var(--color-text-mid)",
+};
+
 export function DashboardView() {
   const [route, navigate] = useHashRoute();
   const viewerRole = useRole();
@@ -124,15 +141,15 @@ export function DashboardView() {
       {/* All registered accounts + role management — admin only */}
       <AccountsPanel />
 
-      {/* Row 1 — Stat pills */}
-      <div className="grid grid-cols-2 gap-3">
+      {/* Row 1 — Stat pills (horizontal scroll with snap) */}
+      <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {STAT_DEFS.map((s) => {
           const Icon = s.icon;
           const value = stats ? stats[s.key] : null;
           return (
             <div
               key={s.key}
-              className="glass-card flex min-w-0 flex-col gap-2 px-4 py-3"
+              className="glass-card flex min-w-[128px] snap-start flex-col gap-2 px-4 py-3"
             >
               <div className="flex items-center justify-between">
                 <span className="micro-label">{s.label}</span>
@@ -576,6 +593,8 @@ function AccountsPanel() {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ["all-users"],
@@ -590,6 +609,19 @@ function AccountsPanel() {
   if (role !== "admin") return null;
 
   const users = data?.users ?? [];
+  const q = query.trim().toLowerCase();
+  const filtered = users.filter(
+    (u) =>
+      (u.fullName ?? "").toLowerCase().includes(q) ||
+      (u.email ?? "").toLowerCase().includes(q),
+  );
+  const grouped = ROLE_GROUPS.map((g) => ({
+    ...g,
+    members: filtered
+      .filter((u) => u.role === g.key)
+      .sort((a, b) => (a.fullName ?? "").localeCompare(b.fullName ?? "")),
+  }));
+  const hasResults = grouped.some((g) => g.members.length > 0);
 
   async function setUserRole(id: string, newRole: "viewer" | "worker" | "manager", name: string) {
     setActingId(id);
@@ -659,104 +691,196 @@ function AccountsPanel() {
           <div className="flex items-center justify-center py-4">
             <Loader2 size={16} className="animate-spin" style={{ color: "var(--color-text-low)" }} />
           </div>
+        ) : users.length === 0 ? (
+          <p className="mt-3 py-2 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
+            No accounts yet.
+          </p>
         ) : (
-          <div className="mt-3 space-y-2">
-            {users.map((u) => {
-              const busy = actingId === u.id;
-              const isAdminUser = u.role === "admin";
-              const statusColor =
-                u.approvalStatus === "approved"
-                  ? "var(--color-teal)"
-                  : u.approvalStatus === "rejected"
-                  ? "var(--color-danger)"
-                  : "var(--color-gold)";
-              return (
-                <div
-                  key={u.id}
-                  className="flex items-center gap-2 rounded-xl p-2"
-                  style={{ background: "rgba(255,255,255,0.02)" }}
-                >
-                  <span
-                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
-                    style={{
-                      border: `1px solid ${statusColor}`,
-                      color: statusColor,
-                      background: "rgba(255,255,255,0.04)",
-                    }}
-                  >
-                    {u.fullName?.[0]?.toUpperCase() ?? "?"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
-                      {u.fullName}
+          <div className="mt-3">
+            {/* Search */}
+            <div
+              className="flex items-center gap-2 rounded-xl px-3 py-2"
+              style={{
+                border: "1px solid var(--color-border)",
+                background: "rgba(255,255,255,0.02)",
+              }}
+            >
+              <Search size={14} style={{ color: "var(--color-text-low)" }} />
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search name or email…"
+                className="w-full bg-transparent text-sm outline-none"
+                style={{ color: "var(--color-text-hi)" }}
+              />
+            </div>
+
+            {/* Grouped, scrollable account list */}
+            <div className="mt-3 max-h-[340px] space-y-3 overflow-y-auto pr-1">
+              {grouped.map((g) =>
+                g.members.length === 0 ? null : (
+                  <div key={g.key} className="space-y-1.5">
+                    <p className="micro-label px-0.5">
+                      {g.label} · {g.members.length}
                     </p>
-                    <p className="truncate text-xs" style={{ color: "var(--color-text-low)" }}>
-                      {u.email}
-                      {u.approvalStatus !== "approved" && (
-                        <span style={{ color: statusColor }}> · {u.approvalStatus}</span>
-                      )}
-                    </p>
-                  </div>
-                  {isAdminUser ? (
-                    <span
-                      className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider"
-                      style={{
-                        border: "1px solid rgba(201,160,99,0.4)",
-                        color: "var(--color-gold)",
-                      }}
-                    >
-                      Admin
-                    </span>
-                  ) : (
-                    <div
-                      className="flex items-center gap-0.5 rounded-full p-0.5"
-                      style={{ border: "1px solid var(--color-border)" }}
-                    >
-                      {(["viewer", "worker", "manager"] as const).map((r) => {
-                        const active = u.role === r;
-                        return (
+                    {g.members.map((u) => {
+                      const busy = actingId === u.id;
+                      const isAdminUser = u.role === "admin";
+                      const expanded = expandedId === u.id;
+                      const roleColor = ROLE_COLOR[u.role] ?? "var(--color-text-mid)";
+                      const statusColor =
+                        u.approvalStatus === "approved"
+                          ? "var(--color-teal)"
+                          : u.approvalStatus === "rejected"
+                          ? "var(--color-danger)"
+                          : "var(--color-gold)";
+                      return (
+                        <div key={u.id}>
                           <button
-                            key={r}
                             type="button"
-                            disabled={busy || active}
-                            onClick={() => setUserRole(u.id, r, u.fullName)}
-                            className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-all disabled:cursor-default"
+                            onClick={() =>
+                              !isAdminUser && setExpandedId(expanded ? null : u.id)
+                            }
+                            className="flex w-full items-center gap-2.5 rounded-xl p-2 text-left transition-colors"
                             style={{
-                              background: active ? "var(--color-teal)" : "transparent",
-                              color: active ? "#04211d" : "var(--color-text-low)",
-                              opacity: busy ? 0.5 : 1,
+                              background: "rgba(255,255,255,0.02)",
+                              cursor: isAdminUser ? "default" : "pointer",
                             }}
                           >
-                            {busy && !active ? <Loader2 size={10} className="animate-spin" /> : r}
+                            <span
+                              className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
+                              style={{
+                                border: `1px solid ${roleColor}`,
+                                color: roleColor,
+                                background: "rgba(255,255,255,0.04)",
+                              }}
+                            >
+                              {u.fullName?.[0]?.toUpperCase() ?? "?"}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <p
+                                  className="truncate text-sm font-medium"
+                                  style={{ color: "var(--color-text-hi)" }}
+                                >
+                                  {u.fullName}
+                                </p>
+                                <span
+                                  className="flex-shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider"
+                                  style={{
+                                    color: roleColor,
+                                    border: `1px solid ${roleColor}`,
+                                    background: `color-mix(in srgb, ${roleColor} 13%, transparent)`,
+                                  }}
+                                >
+                                  {u.role}
+                                </span>
+                              </div>
+                              <p
+                                className="truncate text-xs"
+                                style={{ color: "var(--color-text-low)" }}
+                              >
+                                {u.email}
+                              </p>
+                              <p
+                                className="mt-0.5 text-[10px]"
+                                style={{ color: "var(--color-text-low)" }}
+                              >
+                                Joined {formatJoinDate(u.createdAt)}
+                                {u.approvalStatus !== "approved" && (
+                                  <span style={{ color: statusColor }}> · {u.approvalStatus}</span>
+                                )}
+                              </p>
+                            </div>
+                            {isAdminUser ? (
+                              <span
+                                className="flex flex-shrink-0 items-center gap-1 text-[10px]"
+                                style={{ color: "var(--color-text-low)" }}
+                              >
+                                <Lock size={11} /> Locked
+                              </span>
+                            ) : (
+                              <ChevronDown
+                                size={16}
+                                style={{
+                                  color: "var(--color-text-low)",
+                                  flexShrink: 0,
+                                  transform: expanded ? "rotate(180deg)" : "none",
+                                  transition: "transform 0.15s",
+                                }}
+                              />
+                            )}
                           </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {!isAdminUser && (
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => deleteUser(u.id, u.fullName)}
-                      className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full transition-colors disabled:opacity-50 hover:bg-[rgba(224,86,107,0.12)]"
-                      style={{
-                        border: "1px solid rgba(224,86,107,0.4)",
-                        color: "var(--color-danger)",
-                      }}
-                      aria-label={`Delete ${u.fullName}`}
-                      title="Delete account"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-            {users.length === 0 && (
-              <p className="py-2 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
-                No accounts yet.
-              </p>
-            )}
+
+                          {!isAdminUser && expanded && (
+                            <div
+                              className="mx-2 mt-1 space-y-2.5 rounded-xl p-3"
+                              style={{
+                                border: "1px solid var(--color-border)",
+                                background: "rgba(0,0,0,0.25)",
+                              }}
+                            >
+                              <p className="micro-label">Role</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {(["viewer", "worker", "manager"] as const).map((r) => {
+                                  const active = u.role === r;
+                                  return (
+                                    <button
+                                      key={r}
+                                      type="button"
+                                      disabled={busy || active}
+                                      onClick={() => setUserRole(u.id, r, u.fullName)}
+                                      className="rounded-full px-3 py-1.5 text-xs font-semibold capitalize transition-all disabled:cursor-default"
+                                      style={{
+                                        background: active ? "var(--color-teal)" : "transparent",
+                                        color: active ? "#04211d" : "var(--color-text-mid)",
+                                        border: active
+                                          ? "1px solid var(--color-teal)"
+                                          : "1px solid var(--color-border)",
+                                        opacity: busy && !active ? 0.5 : 1,
+                                      }}
+                                    >
+                                      {busy && !active ? (
+                                        <Loader2 size={12} className="animate-spin" />
+                                      ) : (
+                                        r
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <div className="flex items-center justify-between pt-0.5">
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => deleteUser(u.id, u.fullName)}
+                                  className="flex items-center gap-1.5 text-xs transition-opacity disabled:opacity-50"
+                                  style={{ color: "var(--color-danger)" }}
+                                >
+                                  <Trash2 size={13} /> Delete account
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedId(null)}
+                                  className="btn-teal px-4 py-1.5 text-xs"
+                                >
+                                  Done
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )
+              )}
+              {!hasResults && (
+                <p className="py-3 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
+                  No accounts match “{query}”.
+                </p>
+              )}
+            </div>
           </div>
         )
       )}
@@ -831,4 +955,8 @@ function formatTimeAgo(iso: string): string {
   if (hr < 24) return `${hr}h`;
   if (day < 7) return `${day}d`;
   return new Date(iso).toLocaleDateString("en-SG", { day: "numeric", month: "short" });
+}
+
+function formatJoinDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-SG", { day: "2-digit", month: "short" });
 }

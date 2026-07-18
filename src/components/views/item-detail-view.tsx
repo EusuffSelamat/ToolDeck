@@ -25,7 +25,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { ActionSheet } from "@/components/action-sheet";
 import { MaintenanceSection } from "@/components/maintenance-section";
 import { useRole } from "@/hooks/use-role";
-import { canManage } from "@/lib/roles";
+import { canManage, canOperate } from "@/lib/roles";
 
 export function ItemDetailView({ id }: { id: string }) {
   const [, navigate] = useHashRoute();
@@ -221,8 +221,8 @@ export function ItemDetailView({ id }: { id: string }) {
             </p>
           )}
         </div>
-        {/* Hide actions/delete when soft-deleted */}
-        {!item.isDeleted && (
+        {/* Hide actions/delete when soft-deleted; viewers see neither */}
+        {!item.isDeleted && canOperate(role) && (
           <div className="flex gap-2">
             <button
               onClick={() => setShowActions(true)}

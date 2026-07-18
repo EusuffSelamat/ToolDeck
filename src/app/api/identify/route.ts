@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canOperate } from "@/lib/roles";
 
 /**
  * POST /api/identify — AI vision identification endpoint (§6).
@@ -129,6 +130,13 @@ export async function POST(req: Request) {
   const session = await requireAuth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Scan/identify is an operational feature — hidden from viewers.
+  if (!canOperate(session.user.role)) {
+    return NextResponse.json(
+      { error: "Your account is view-only. Ask an admin for access." },
+      { status: 403 }
+    );
   }
 
   const body = await req.json().catch(() => null);

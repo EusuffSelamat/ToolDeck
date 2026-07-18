@@ -9,7 +9,7 @@ import { getLocationFilter, clearLocationFilter, type LocationFilterMode } from 
 import { exportToCSV, exportToXLSX } from "@/lib/export";
 import { ExportDialog } from "@/components/export-dialog";
 import { useRole } from "@/hooks/use-role";
-import { canManage } from "@/lib/roles";
+import { canManage, canOperate } from "@/lib/roles";
 
 type FilterChip = {
   key: string;
@@ -55,6 +55,7 @@ export function ItemsView() {
   const [, navigate] = useHashRoute();
   const role = useRole();
   const isAdmin = canManage(role); // admin or manager
+  const canAct = canOperate(role); // worker and above — viewers are read-only
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const initial = useMemo(() => getInitialLocationFilter(), []);
@@ -206,8 +207,7 @@ export function ItemsView() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* Export dropdown — admin only */}
-          {isAdmin && (
+          {/* Export dropdown — available to every role, viewers included */}
           <div className="relative">
             <button
               type="button"
@@ -271,14 +271,15 @@ export function ItemsView() {
               </>
             )}
           </div>
+          {canAct && (
+            <button
+              type="button"
+              onClick={() => navigate({ name: "item-new" })}
+              className="btn-teal flex h-10 items-center gap-1.5 px-4 text-sm"
+            >
+              <Plus size={16} /> Add
+            </button>
           )}
-          <button
-            type="button"
-            onClick={() => navigate({ name: "item-new" })}
-            className="btn-teal flex h-10 items-center gap-1.5 px-4 text-sm"
-          >
-            <Plus size={16} /> Add
-          </button>
         </div>
       </div>
 
@@ -465,10 +466,12 @@ export function ItemsView() {
             >
               {hasAnyFilter
                 ? "Try a different search or clear filters."
-                : "Tap Add or Scan to add your first."}
+                : canAct
+                ? "Tap Add or Scan to add your first."
+                : "Nothing has been added yet."}
             </p>
           </div>
-          {!hasAnyFilter && (
+          {!hasAnyFilter && canAct && (
             <button
               onClick={() => navigate({ name: "item-new" })}
               className="btn-teal mt-1 flex h-10 items-center gap-2 px-5 text-sm"

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canOperate } from "@/lib/roles";
 import { z } from "zod";
 
 // GET /api/items/[id]/maintenance — list maintenance logs for an item
@@ -56,6 +57,13 @@ export async function POST(
   const session = await requireAuth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Viewers are read-only — no maintenance log writes.
+  if (!canOperate(session.user.role)) {
+    return NextResponse.json(
+      { error: "Your account is view-only. Ask an admin for access." },
+      { status: 403 }
+    );
   }
 
   const { id } = await params;

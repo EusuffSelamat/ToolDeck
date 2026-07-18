@@ -3,6 +3,8 @@
 import { LayoutDashboard, Package, ScanLine, MapPin, Activity as ActivityIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Route } from "@/hooks/use-hash-route";
+import { useRole } from "@/hooks/use-role";
+import { canOperate } from "@/lib/roles";
 
 const NAV: {
   route: Route;
@@ -24,6 +26,10 @@ export function BottomNav({
   route: Route;
   onNavigate: (r: Route) => void;
 }) {
+  const role = useRole();
+  // Viewers are read-only: the Scan tab is hidden entirely for them.
+  const nav = canOperate(role) ? NAV : NAV.filter((n) => n.route.name !== "scan");
+
   return (
     <nav
       className="fixed inset-x-0 bottom-0 z-30 glass-strong"
@@ -33,7 +39,7 @@ export function BottomNav({
       }}
     >
       <div className="mx-auto flex h-16 max-w-md items-stretch justify-between px-2">
-        {NAV.map((item) => {
+        {nav.map((item) => {
           // Map item-detail/new/edit → "items" so the Items tab stays highlighted
           const activeRouteName =
             route.name === "item-detail" ||

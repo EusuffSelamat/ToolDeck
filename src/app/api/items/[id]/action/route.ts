@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
-import { canManage } from "@/lib/roles";
+import { canManage, canOperate } from "@/lib/roles";
 import { z } from "zod";
 
 /**
@@ -62,7 +62,14 @@ export async function POST(
   }
   const data = parsed.data;
 
-  // Workers can only: checkout, checkin, move. Managers/admins can do all 6.
+  // Viewers are read-only: no actions at all. Workers can only:
+  // checkout, checkin, move. Managers/admins can do all 6.
+  if (!canOperate(session.user.role)) {
+    return NextResponse.json(
+      { error: "Your account is view-only. Ask an admin for access." },
+      { status: 403 }
+    );
+  }
   if (!canManage(session.user.role)) {
     const allowed = ["checkout", "checkin", "move"];
     if (!allowed.includes(data.action)) {

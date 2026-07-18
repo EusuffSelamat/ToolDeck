@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
-import { canManage } from "@/lib/roles";
+import { canOperate } from "@/lib/roles";
 import {
   itemCreateSchema,
   nextItemCode,
@@ -36,10 +36,9 @@ export async function GET(req: Request) {
   const holderMe = url.searchParams.get("holder") === "me";
   const deleted = url.searchParams.get("deleted") === "true";
   const page = safeInt(url.searchParams.get("page"), 1);
-  // Exports need a higher cap than the UI list. Export is a manager/admin
-  // feature, so the raised cap only applies to them.
-  const isExport =
-    url.searchParams.get("export") === "true" && canManage(session.user.role);
+  // Exports need a higher cap than the UI list. Export is available to
+  // every signed-in role (viewers included) — it's read-only.
+  const isExport = url.searchParams.get("export") === "true";
   const requestedLimit = safeInt(url.searchParams.get("limit"), 200);
   const limit = Math.min(isExport ? 5000 : 500, requestedLimit);
 
@@ -142,6 +141,13 @@ export async function POST(req: Request) {
   const session = await requireAuth();
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  // Viewers are read-only — they cannot add items.
+  if (!canOperate(session.user.role)) {
+    return NextResponse.json(
+      { error: "Your account is view-only. Ask an admin for access." },
+      { status: 403 }
+    );
   }
 
   const body = await req.json().catch(() => null);

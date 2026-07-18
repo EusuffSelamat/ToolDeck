@@ -5,7 +5,7 @@ import { requireAdmin } from "@/lib/require-auth";
 
 const schema = z.union([
   z.object({ action: z.enum(["approve", "reject"]) }),
-  z.object({ action: z.literal("set_role"), role: z.enum(["worker", "manager"]) }),
+  z.object({ action: z.literal("set_role"), role: z.enum(["viewer", "worker", "manager"]) }),
 ]);
 
 // PATCH /api/admin/users/[id]

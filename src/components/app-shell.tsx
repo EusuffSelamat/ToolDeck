@@ -1,6 +1,8 @@
 "use client";
 
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
+import { useRole } from "@/hooks/use-role";
+import { canOperate } from "@/lib/roles";
 import { TopBar } from "@/components/top-bar";
 import { BottomNav } from "@/components/bottom-nav";
 import { DashboardView } from "@/components/views/dashboard-view";
@@ -13,20 +15,22 @@ import { ActivityView } from "@/components/views/activity-view";
 import { TrashView } from "@/components/views/trash-view";
 import { SettingsView } from "@/components/views/settings-view";
 
-function renderView(route: Route) {
+function renderView(route: Route, viewOnly: boolean) {
   switch (route.name) {
     case "dashboard":
       return <DashboardView />;
     case "items":
       return <ItemsView />;
     case "item-new":
-      return <ItemFormView />;
+      // Viewers cannot add items — fall back to the items list.
+      return viewOnly ? <ItemsView /> : <ItemFormView />;
     case "item-detail":
       return <ItemDetailView id={route.id} />;
     case "item-edit":
-      return <ItemFormView id={route.id} />;
+      return viewOnly ? <ItemsView /> : <ItemFormView id={route.id} />;
     case "scan":
-      return <ScanView />;
+      // Scan is hidden from viewers; deep-linking #scan lands on the dashboard.
+      return viewOnly ? <DashboardView /> : <ScanView />;
     case "locations":
       return <LocationsView />;
     case "activity":
@@ -42,12 +46,14 @@ function renderView(route: Route) {
 
 export function AppShell() {
   const [route, navigate] = useHashRoute();
+  const role = useRole();
+  const viewOnly = !canOperate(role);
 
   return (
     <div className="relative z-10 flex min-h-screen flex-col">
       <TopBar />
       <main className="flex-1 pb-24" style={{ maxWidth: "100%" }}>
-        <div className="mx-auto w-full max-w-md">{renderView(route)}</div>
+        <div className="mx-auto w-full max-w-md">{renderView(route, viewOnly)}</div>
       </main>
       <BottomNav route={route} onNavigate={navigate} />
     </div>

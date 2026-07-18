@@ -22,7 +22,7 @@ model User {
   email        String   @unique
   fullName     String
   passwordHash String
-  role         String   @default("worker") // 'admin' | 'manager' | 'worker'
+  role         String   @default("viewer") // 'admin' | 'manager' | 'worker' | 'viewer'
   // Admin approval gate: new sign-ups start as 'pending' and cannot log in
   // until an admin approves them from the dashboard. 'rejected' users are
   // blocked. Admins (role='admin') bypass this check entirely.

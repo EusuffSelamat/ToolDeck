@@ -184,8 +184,7 @@ export function SettingsView() {
       </div>
       )}
 
-      {/* Export section — admin only */}
-      {isAdmin && (
+      {/* Export section — available to every role, viewers included */}
       <div className="glass-card mb-4 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Download size={14} style={{ color: "var(--color-text-low)" }} />
@@ -209,7 +208,6 @@ export function SettingsView() {
           Exports all active (non-deleted) items. Use the export button on the Items tab to export a filtered set.
         </p>
       </div>
-      )}
 
       {/* Recently deleted — admin only */}
       {isAdmin && (

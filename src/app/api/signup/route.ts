@@ -28,9 +28,12 @@ export async function POST(req: Request) {
 
   try {
     // New accounts start as 'pending' (schema default) — an admin must
-    // approve them from the dashboard before they can sign in.
+    // approve them from the dashboard before they can sign in. Role is set
+    // explicitly (not left to the DB column default, which may predate the
+    // viewer tier): everyone starts as a read-only viewer until an admin
+    // promotes them.
     await db.user.create({
-      data: { email: lower, fullName: name.trim(), passwordHash },
+      data: { email: lower, fullName: name.trim(), passwordHash, role: "viewer" },
     });
   } catch (e) {
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {

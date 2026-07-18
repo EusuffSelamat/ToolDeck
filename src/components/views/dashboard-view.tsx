@@ -32,6 +32,7 @@ import { useState } from "react";
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
 import { setLocationFilter } from "@/lib/location-filter";
 import { useRole } from "@/hooks/use-role";
+import { canOperate } from "@/lib/roles";
 import { useToast } from "@/hooks/use-toast";
 
 type Stats = {
@@ -97,6 +98,7 @@ const KIND_ICON: Record<string, typeof Building2> = {
 
 export function DashboardView() {
   const [route, navigate] = useHashRoute();
+  const viewerRole = useRole();
 
   const { data: stats, isLoading } = useQuery({
     queryKey: ["stats"],
@@ -400,15 +402,19 @@ export function DashboardView() {
               No items yet
             </p>
             <p className="mt-1 text-sm" style={{ color: "var(--color-text-mid)" }}>
-              Tap Scan to add your first tool.
+              {canOperate(viewerRole)
+                ? "Tap Scan to add your first tool."
+                : "Nothing has been added yet."}
             </p>
           </div>
-          <button
-            onClick={() => navigate({ name: "scan" })}
-            className="btn-teal mt-1 flex h-10 items-center gap-2 px-5 text-sm"
-          >
-            Open Scan
-          </button>
+          {canOperate(viewerRole) && (
+            <button
+              onClick={() => navigate({ name: "scan" })}
+              className="btn-teal mt-1 flex h-10 items-center gap-2 px-5 text-sm"
+            >
+              Open Scan
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -584,7 +590,7 @@ function AccountsPanel() {
 
   const users = data?.users ?? [];
 
-  async function setUserRole(id: string, newRole: "worker" | "manager", name: string) {
+  async function setUserRole(id: string, newRole: "viewer" | "worker" | "manager", name: string) {
     setActingId(id);
     try {
       const res = await fetch(`/api/admin/users/${id}`, {
@@ -683,7 +689,7 @@ function AccountsPanel() {
                       className="flex items-center gap-0.5 rounded-full p-0.5"
                       style={{ border: "1px solid var(--color-border)" }}
                     >
-                      {(["worker", "manager"] as const).map((r) => {
+                      {(["viewer", "worker", "manager"] as const).map((r) => {
                         const active = u.role === r;
                         return (
                           <button

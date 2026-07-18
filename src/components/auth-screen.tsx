@@ -23,8 +23,7 @@ export function AuthScreen() {
       // Clean the URL
       window.history.replaceState({}, "", window.location.pathname);
       if (errParam === "CredentialsSignin") return "Wrong email or password.";
-      if (errParam === "PENDING_APPROVAL")
-        return "Please wait for approval for access to the app, you will be notified via email.";
+      if (errParam === "PENDING_APPROVAL") return "Pending approval";
       if (errParam === "ACCOUNT_REJECTED")
         return "Your account request was declined. Please contact your administrator.";
       return "Sign-in failed. Please try again.";

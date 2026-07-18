@@ -64,6 +64,9 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
   },
-  pages: { signIn: "/" },
+  // error: "/" routes auth failures (e.g. PENDING_APPROVAL thrown from
+  // authorize) back to the themed sign-in screen as /?error=<code> instead
+  // of NextAuth's unstyled default /api/auth/error page.
+  pages: { signIn: "/", error: "/" },
   trustHost: true,
 };

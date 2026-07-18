@@ -1,5 +1,6 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
+import { db } from "@/lib/db";
 
 export type SessionUser = {
   user: { id: string; name?: string | null; email: string; role: "admin" | "worker" };
@@ -8,11 +9,29 @@ export type SessionUser = {
 /**
  * Auth gate for API routes — the Prisma+SQLite equivalent of Supabase RLS.
  * Every data-touching route must call this and return 401 if null.
+ *
+ * Because sessions are stateless JWTs, approval status and role would
+ * otherwise only be checked at sign-in — a user rejected (or demoted)
+ * AFTER signing in would keep access until the token expires. So we
+ * re-validate against the database on every request: the user must still
+ * exist and still be approved (admins bypass approval, same as sign-in),
+ * and the role reflected to callers is the CURRENT one, not the token's.
  */
 export async function requireAuth(): Promise<SessionUser | null> {
   const session = await getServerSession(authOptions);
   if (!session?.user?.email) return null;
-  return session as SessionUser;
+  const id = (session.user as { id?: string }).id;
+  if (!id) return null;
+
+  const user = await db.user.findUnique({
+    where: { id },
+    select: { role: true, approvalStatus: true },
+  });
+  if (!user) return null; // account deleted — token no longer valid
+  if (user.role !== "admin" && user.approvalStatus !== "approved") return null;
+
+  (session.user as { role?: string }).role = user.role;
+  return session as unknown as SessionUser;
 }
 
 /**

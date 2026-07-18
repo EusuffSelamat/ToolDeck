@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canManage } from "@/lib/roles";
 import {
   itemUpdateSchema,
   savePhoto,
@@ -99,8 +100,8 @@ export async function PATCH(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Only admins can edit item details
-  if (session.user.role !== "admin") {
+  // Only managers/admins can edit item details
+  if (!canManage(session.user.role)) {
     return NextResponse.json({ error: "Admin access required to edit items." }, { status: 403 });
   }
 
@@ -274,8 +275,8 @@ export async function DELETE(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Only admins can delete items
-  if (session.user.role !== "admin") {
+  // Only managers/admins can delete items
+  if (!canManage(session.user.role)) {
     return NextResponse.json({ error: "Admin access required to delete items." }, { status: 403 });
   }
 

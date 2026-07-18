@@ -24,8 +24,7 @@ export function AuthScreen() {
       window.history.replaceState({}, "", window.location.pathname);
       if (errParam === "CredentialsSignin") return "Wrong email or password.";
       if (errParam === "PENDING_APPROVAL") return "Pending approval";
-      if (errParam === "ACCOUNT_REJECTED")
-        return "Your account request was declined. Please contact your administrator.";
+      if (errParam === "ACCOUNT_REJECTED") return "Approval rejected";
       return "Sign-in failed. Please try again.";
     }
     return null;

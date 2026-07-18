@@ -24,6 +24,7 @@ import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
 import { exportToCSV, exportToXLSX } from "@/lib/export";
 import { useRole } from "@/hooks/use-role";
+import { canManage } from "@/lib/roles";
 
 type Category = { id: string; name: string; sort: number };
 
@@ -33,7 +34,7 @@ export function SettingsView() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const role = useRole();
-  const isAdmin = role === "admin";
+  const isAdmin = canManage(role); // admin or manager
   const [showCatForm, setShowCatForm] = useState(false);
   const [editingCat, setEditingCat] = useState<Category | null>(null);
 
@@ -230,7 +231,7 @@ export function SettingsView() {
       )}
 
       <p className="mt-6 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
-        TOOLDECK · v1.0{isAdmin ? " · Admin" : " · Worker"}
+        TOOLDECK · v1.0 · {role.charAt(0).toUpperCase() + role.slice(1)}
       </p>
 
       {showCatForm && (

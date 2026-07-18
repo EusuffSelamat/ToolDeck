@@ -1,9 +1,10 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { canManage, type Role } from "@/lib/roles";
 
 export type SessionUser = {
-  user: { id: string; name?: string | null; email: string; role: "admin" | "worker" };
+  user: { id: string; name?: string | null; email: string; role: Role };
 };
 
 /**
@@ -32,6 +33,18 @@ export async function requireAuth(): Promise<SessionUser | null> {
 
   (session.user as { role?: string }).role = user.role;
   return session as unknown as SessionUser;
+}
+
+/**
+ * Manager-or-above gate. Returns the session if the user is an admin or
+ * manager, null otherwise. Use for inventory-management routes (delete,
+ * restore, purge, export, categories, locations, privileged item actions).
+ */
+export async function requireManager(): Promise<SessionUser | null> {
+  const session = await requireAuth();
+  if (!session) return null;
+  if (!canManage(session.user.role)) return null;
+  return session;
 }
 
 /**

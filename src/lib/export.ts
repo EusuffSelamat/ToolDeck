@@ -47,7 +47,9 @@ function toRows(items: ExportItem[]): Record<string, string | number>[] {
     for (const col of COLUMNS) {
       const val = item[col.key as keyof ExportItem];
       if (col.key === "updatedAt") {
-        row[col.label] = new Date(val).toLocaleString("en-SG");
+        // Access the field directly so TS narrows away null/undefined
+        // (val's union includes optional fields like notes).
+        row[col.label] = new Date(item.updatedAt).toLocaleString("en-SG");
       } else if (col.key === "status" || col.key === "condition") {
         row[col.label] = String(val).replace(/_/g, " ");
       } else if (col.key === "trackingType") {

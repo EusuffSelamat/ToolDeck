@@ -21,6 +21,7 @@ import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
 import { setLocationFilter } from "@/lib/location-filter";
 import { useRole } from "@/hooks/use-role";
+import { canManage } from "@/lib/roles";
 
 type LocationData = {
   id: string;
@@ -50,7 +51,7 @@ export function LocationsView() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const role = useRole();
-  const isAdmin = role === "admin";
+  const isAdmin = canManage(role); // admin or manager
 
   const { data, isLoading } = useQuery({
     queryKey: ["locations"],

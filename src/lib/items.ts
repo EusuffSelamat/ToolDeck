@@ -35,8 +35,10 @@ export type TxnAction = (typeof TXN_ACTIONS)[number];
 
 export const PHOTOS_DIR = path.join(process.cwd(), "public", "item-photos");
 
-/** Soft-delete restore window — re-exported from client-safe constants. */
-export { RESTORE_WINDOW_MS } from "@/lib/constants";
+/** Soft-delete restore window — re-exported from client-safe constants.
+ * Imported (not just re-exported) so isRestorable below can use it. */
+import { RESTORE_WINDOW_MS } from "@/lib/constants";
+export { RESTORE_WINDOW_MS };
 
 /** Max base64 photo size (~1.5MB decoded, matches compressed JPEG budget). */
 export const MAX_PHOTO_BASE64_LEN = 2_000_000;

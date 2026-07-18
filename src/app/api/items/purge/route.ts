@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { requireAuth } from "@/lib/require-auth";
+import { requireManager } from "@/lib/require-auth";
 import { RESTORE_WINDOW_MS, deletePhoto } from "@/lib/items";
 
 /**
@@ -15,9 +15,10 @@ import { RESTORE_WINDOW_MS, deletePhoto } from "@/lib/items";
  * scale the query is fast. For larger datasets, batch the deletes.
  */
 export async function POST() {
-  const session = await requireAuth();
+  // Purge is destructive and irreversible — manager/admin only.
+  const session = await requireManager();
   if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: "Manager access required." }, { status: 403 });
   }
 
   const cutoff = new Date(Date.now() - RESTORE_WINDOW_MS);

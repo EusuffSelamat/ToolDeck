@@ -25,13 +25,14 @@ import { ToastAction } from "@/components/ui/toast";
 import { ActionSheet } from "@/components/action-sheet";
 import { MaintenanceSection } from "@/components/maintenance-section";
 import { useRole } from "@/hooks/use-role";
+import { canManage } from "@/lib/roles";
 
 export function ItemDetailView({ id }: { id: string }) {
   const [, navigate] = useHashRoute();
   const { toast } = useToast();
   const qc = useQueryClient();
   const role = useRole();
-  const isAdmin = role === "admin";
+  const isAdmin = canManage(role); // admin or manager
   const { data: session } = useSession();
   const [showActions, setShowActions] = useState(false);
 

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canManage } from "@/lib/roles";
 import { z } from "zod";
 
 const updateSchema = z.object({
@@ -18,9 +19,9 @@ export async function PATCH(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Only admins can manage categories
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  // Only managers/admins can manage categories
+  if (!canManage(session.user.role)) {
+    return NextResponse.json({ error: "Manager access required." }, { status: 403 });
   }
 
   const { id } = await params;
@@ -66,9 +67,9 @@ export async function DELETE(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Only admins can manage categories
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required." }, { status: 403 });
+  // Only managers/admins can manage categories
+  if (!canManage(session.user.role)) {
+    return NextResponse.json({ error: "Manager access required." }, { status: 403 });
   }
 
   const { id } = await params;

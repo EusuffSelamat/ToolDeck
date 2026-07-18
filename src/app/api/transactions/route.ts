@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canManage } from "@/lib/roles";
 
 /**
  * GET /api/transactions — reverse-chronological audit trail feed (§7.9).
@@ -90,9 +91,9 @@ export async function DELETE(req: Request) {
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Only admins can purge activity logs
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required to delete activity logs." }, { status: 403 });
+  // Only managers/admins can purge activity logs
+  if (!canManage(session.user.role)) {
+    return NextResponse.json({ error: "Manager access required to delete activity logs." }, { status: 403 });
   }
 
   const url = new URL(req.url);

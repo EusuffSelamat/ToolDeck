@@ -59,7 +59,20 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         (session.user as { id?: string }).id = token.id as string;
         session.user.name = (token.name as string) ?? session.user.name;
-        (session.user as { role?: string }).role = (token.role as string) ?? "worker";
+        // Read the CURRENT role from the DB (not the token) so role changes
+        // made by an admin reach the client UI on the next session refresh
+        // without requiring the user to sign out and back in.
+        let role = (token.role as string) ?? "worker";
+        try {
+          const fresh = await db.user.findUnique({
+            where: { id: token.id as string },
+            select: { role: true },
+          });
+          if (fresh) role = fresh.role;
+        } catch {
+          // DB hiccup — fall back to the token's role.
+        }
+        (session.user as { role?: string }).role = role;
       }
       return session;
     },
@@ -68,5 +81,4 @@ export const authOptions: NextAuthOptions = {
   // authorize) back to the themed sign-in screen as /?error=<code> instead
   // of NextAuth's unstyled default /api/auth/error page.
   pages: { signIn: "/", error: "/" },
-  trustHost: true,
 };

@@ -9,6 +9,7 @@ import { getLocationFilter, clearLocationFilter, type LocationFilterMode } from 
 import { exportToCSV, exportToXLSX } from "@/lib/export";
 import { ExportDialog } from "@/components/export-dialog";
 import { useRole } from "@/hooks/use-role";
+import { canManage } from "@/lib/roles";
 
 type FilterChip = {
   key: string;
@@ -53,7 +54,7 @@ function getInitialLocationFilter(): {
 export function ItemsView() {
   const [, navigate] = useHashRoute();
   const role = useRole();
-  const isAdmin = role === "admin";
+  const isAdmin = canManage(role); // admin or manager
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const initial = useMemo(() => getInitialLocationFilter(), []);
@@ -117,6 +118,7 @@ export function ItemsView() {
           holderId: string | null;
           holderName: string | null;
           expectedReturnDate: string | null;
+          updatedAt: string;
         }>;
         total: number;
       }>;

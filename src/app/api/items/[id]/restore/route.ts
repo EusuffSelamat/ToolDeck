@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canManage } from "@/lib/roles";
 import { isRestorable } from "@/lib/items";
 
 // POST /api/items/[id]/restore — restore a soft-deleted item.
@@ -14,9 +15,9 @@ export async function POST(
   if (!session) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-  // Only admins can restore deleted items
-  if (session.user.role !== "admin") {
-    return NextResponse.json({ error: "Admin access required to restore items." }, { status: 403 });
+  // Only managers/admins can restore deleted items
+  if (!canManage(session.user.role)) {
+    return NextResponse.json({ error: "Manager access required to restore items." }, { status: 403 });
   }
 
   const { id } = await params;

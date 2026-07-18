@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { requireAuth } from "@/lib/require-auth";
+import { canManage } from "@/lib/roles";
 import { z } from "zod";
 
 /**
@@ -60,12 +62,12 @@ export async function POST(
   }
   const data = parsed.data;
 
-  // Workers can only: checkout, checkin, move. Admins can do all actions.
-  if (session.user.role !== "admin") {
+  // Workers can only: checkout, checkin, move. Managers/admins can do all 6.
+  if (!canManage(session.user.role)) {
     const allowed = ["checkout", "checkin", "move"];
     if (!allowed.includes(data.action)) {
       return NextResponse.json(
-        { error: "Admin access required for this action." },
+        { error: "Manager access required for this action." },
         { status: 403 }
       );
     }
@@ -225,7 +227,11 @@ export async function POST(
   try {
     await db.$transaction(async (tx) => {
       await tx.item.update({ where: { id }, data: updateData });
-      await tx.transaction.create({ data: txnData });
+      // txnData is built dynamically per action; it always carries the
+      // required itemId/personId/action fields set above.
+      await tx.transaction.create({
+        data: txnData as unknown as Prisma.TransactionUncheckedCreateInput,
+      });
     });
   } catch (e) {
     console.error("Action failed:", e);

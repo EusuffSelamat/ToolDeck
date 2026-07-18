@@ -6,6 +6,7 @@ import { Activity as ActivityIcon, Package, X, Trash2, ChevronDown, AlertTriangl
 import { useHashRoute } from "@/hooks/use-hash-route";
 import { useToast } from "@/hooks/use-toast";
 import { useRole } from "@/hooks/use-role";
+import { canManage } from "@/lib/roles";
 import { StatusPill } from "@/components/status-pill";
 
 type Transaction = {
@@ -59,7 +60,7 @@ export function ActivityView() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const role = useRole();
-  const isAdmin = role === "admin";
+  const isAdmin = canManage(role); // admin or manager
   const [activeAction, setActiveAction] = useState<string | null>(null);
   const [limit, setLimit] = useState("100");
   const [showPurgeMenu, setShowPurgeMenu] = useState(false);

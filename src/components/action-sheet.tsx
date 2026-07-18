@@ -17,6 +17,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { canManage, type Role } from "@/lib/roles";
 
 type Action = "edit" | "checkout" | "checkin" | "move" | "adjust_qty" | "condition";
 
@@ -24,7 +25,7 @@ type Meta = {
   locations: Array<{ id: string; name: string }>;
   categories: Array<{ id: string; name: string }>;
   currentUser: { id: string; name: string };
-  role: "admin" | "worker";
+  role: Role;
 };
 
 type ItemData = {
@@ -62,8 +63,9 @@ export function ActionSheet({
   const isAsset = item.trackingType === "asset";
   const isStock = item.trackingType === "stock";
 
-  // Define available actions based on item state
-  const isAdmin = meta.role === "admin";
+  // Define available actions based on item state.
+  // Managers and admins see all 6 actions; workers only checkout/return/move.
+  const isAdmin = canManage(meta.role);
 
   const actions: Array<{
     id: Action;

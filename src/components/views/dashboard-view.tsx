@@ -22,9 +22,11 @@ import {
   Truck,
   Wrench,
   UserCheck,
+  Users,
   Check,
   X,
   Loader2,
+  ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
 import { useHashRoute, type Route } from "@/hooks/use-hash-route";
@@ -115,6 +117,9 @@ export function DashboardView() {
 
       {/* Pending approvals — admin only */}
       <PendingApprovals />
+
+      {/* All registered accounts + role management — admin only */}
+      <AccountsPanel />
 
       {/* Row 1 — Stat pills */}
       <div className="-mx-5 flex gap-3 overflow-x-auto px-5 pb-2">
@@ -550,6 +555,165 @@ function PendingApprovals() {
             );
           })}
         </div>
+      )}
+    </div>
+  );
+}
+
+// ── Accounts panel (admin only) ─────────────────────────────────────────
+// Lists every registered account. Approved non-admin accounts get a
+// Worker/Manager toggle; admin accounts are read-only (managed manually).
+function AccountsPanel() {
+  const role = useRole();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [actingId, setActingId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["all-users"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/users");
+      if (!res.ok) throw new Error("Failed to load users");
+      return res.json() as Promise<{ users: PendingUser[] }>;
+    },
+    enabled: role === "admin" && open,
+  });
+
+  if (role !== "admin") return null;
+
+  const users = data?.users ?? [];
+
+  async function setUserRole(id: string, newRole: "worker" | "manager", name: string) {
+    setActingId(id);
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_role", role: newRole }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({ title: "Role change failed", description: err.error ?? "Please try again." });
+        return;
+      }
+      toast({ title: `Now a ${newRole}`, description: name });
+      qc.invalidateQueries({ queryKey: ["all-users"] });
+    } catch {
+      toast({ title: "Role change failed", description: "Please try again." });
+    } finally {
+      setActingId(null);
+    }
+  }
+
+  return (
+    <div className="glass-card mb-4 p-4" style={{ borderColor: "rgba(25,227,196,0.25)" }}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className="flex w-full items-center gap-2 text-left"
+      >
+        <Users size={14} style={{ color: "var(--color-teal)" }} />
+        <span className="micro-label flex-1">Accounts</span>
+        <ChevronDown
+          size={14}
+          style={{
+            color: "var(--color-text-low)",
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform 0.15s",
+          }}
+        />
+      </button>
+
+      {open && (
+        isLoading ? (
+          <div className="flex items-center justify-center py-4">
+            <Loader2 size={16} className="animate-spin" style={{ color: "var(--color-text-low)" }} />
+          </div>
+        ) : (
+          <div className="mt-3 space-y-2">
+            {users.map((u) => {
+              const busy = actingId === u.id;
+              const isAdminUser = u.role === "admin";
+              const statusColor =
+                u.approvalStatus === "approved"
+                  ? "var(--color-teal)"
+                  : u.approvalStatus === "rejected"
+                  ? "var(--color-danger)"
+                  : "var(--color-gold)";
+              return (
+                <div
+                  key={u.id}
+                  className="flex items-center gap-2 rounded-xl p-2"
+                  style={{ background: "rgba(255,255,255,0.02)" }}
+                >
+                  <span
+                    className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full font-display text-sm font-bold"
+                    style={{
+                      border: `1px solid ${statusColor}`,
+                      color: statusColor,
+                      background: "rgba(255,255,255,0.04)",
+                    }}
+                  >
+                    {u.fullName?.[0]?.toUpperCase() ?? "?"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium" style={{ color: "var(--color-text-hi)" }}>
+                      {u.fullName}
+                    </p>
+                    <p className="truncate text-xs" style={{ color: "var(--color-text-low)" }}>
+                      {u.email}
+                      {u.approvalStatus !== "approved" && (
+                        <span style={{ color: statusColor }}> · {u.approvalStatus}</span>
+                      )}
+                    </p>
+                  </div>
+                  {isAdminUser ? (
+                    <span
+                      className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider"
+                      style={{
+                        border: "1px solid rgba(201,160,99,0.4)",
+                        color: "var(--color-gold)",
+                      }}
+                    >
+                      Admin
+                    </span>
+                  ) : (
+                    <div
+                      className="flex items-center gap-0.5 rounded-full p-0.5"
+                      style={{ border: "1px solid var(--color-border)" }}
+                    >
+                      {(["worker", "manager"] as const).map((r) => {
+                        const active = u.role === r;
+                        return (
+                          <button
+                            key={r}
+                            type="button"
+                            disabled={busy || active}
+                            onClick={() => setUserRole(u.id, r, u.fullName)}
+                            className="rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider transition-all disabled:cursor-default"
+                            style={{
+                              background: active ? "var(--color-teal)" : "transparent",
+                              color: active ? "#04211d" : "var(--color-text-low)",
+                              opacity: busy ? 0.5 : 1,
+                            }}
+                          >
+                            {busy && !active ? <Loader2 size={10} className="animate-spin" /> : r}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {users.length === 0 && (
+              <p className="py-2 text-center text-xs" style={{ color: "var(--color-text-low)" }}>
+                No accounts yet.
+              </p>
+            )}
+          </div>
+        )
       )}
     </div>
   );

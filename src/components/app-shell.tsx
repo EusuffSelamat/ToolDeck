@@ -52,7 +52,15 @@ export function AppShell() {
   return (
     <div className="relative z-10 flex min-h-screen flex-col">
       <TopBar />
-      <main className="flex-1 pb-24" style={{ maxWidth: "100%" }}>
+      <main
+        className="flex-1"
+        style={{
+          maxWidth: "100%",
+          // Clear the fixed bottom nav (h-16) + the Scan button that pokes
+          // ~20px above it + the device's safe-area inset (gesture bar).
+          paddingBottom: "calc(7rem + env(safe-area-inset-bottom))",
+        }}
+      >
         <div className="mx-auto w-full max-w-md">{renderView(route, viewOnly)}</div>
       </main>
       <BottomNav route={route} onNavigate={navigate} />

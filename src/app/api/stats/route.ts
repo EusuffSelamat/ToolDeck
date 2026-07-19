@@ -20,83 +20,89 @@ export async function GET() {
 
   const whereActive = { isDeleted: false };
 
-  const [
-    totalItems,
-    available,
-    checkedOut,
-    needsService,
-    outOfOrder,
-    overdueItems,
-    byCategory,
-    byLocation,
-    recentActivity,
-    maintenanceDueSoon,
-  ] = await Promise.all([
-    db.item.count({ where: whereActive }),
-    db.item.count({ where: { ...whereActive, status: "available" } }),
-    db.item.count({ where: { ...whereActive, status: "checked_out" } }),
-    db.item.count({ where: { ...whereActive, status: "needs_service" } }),
-    db.item.count({ where: { ...whereActive, status: "out_of_order" } }),
-    // Overdue: checked out with expectedReturnDate < today
-    db.item.findMany({
-      where: {
-        ...whereActive,
-        status: "checked_out",
-        expectedReturnDate: { lt: new Date() },
+  // Run queries sequentially instead of one big Promise.all. On serverless the
+  // Prisma pool is tiny (often connection_limit=1); firing ~10 queries at once
+  // makes them queue on the single connection until one times out with
+  // "Timed out fetching a new connection from the connection pool". Sequential
+  // awaits grab and release the one connection cleanly.
+
+  // One grouped count replaces five separate per-status counts.
+  const statusGroups = await db.item.groupBy({
+    by: ["status"],
+    where: whereActive,
+    _count: { _all: true },
+  });
+  const countForStatus = (status: string) =>
+    statusGroups.find((g) => g.status === status)?._count._all ?? 0;
+  const totalItems = statusGroups.reduce((sum, g) => sum + g._count._all, 0);
+  const available = countForStatus("available");
+  const checkedOut = countForStatus("checked_out");
+  const needsService = countForStatus("needs_service");
+  const outOfOrder = countForStatus("out_of_order");
+
+  // Overdue: checked out with expectedReturnDate < today
+  const overdueItems = await db.item.findMany({
+    where: {
+      ...whereActive,
+      status: "checked_out",
+      expectedReturnDate: { lt: new Date() },
+    },
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      expectedReturnDate: true,
+      holder: { select: { fullName: true } },
+    },
+  });
+
+  // By category
+  const byCategory = await db.category.findMany({
+    orderBy: { sort: "asc" },
+    select: {
+      name: true,
+      _count: { select: { items: { where: { isDeleted: false } } } },
+    },
+  });
+
+  // By location (for the locations panel)
+  const byLocation = await db.location.findMany({
+    orderBy: { name: "asc" },
+    select: {
+      id: true,
+      name: true,
+      kind: true,
+      _count: {
+        select: { itemsCurrent: { where: { isDeleted: false } } },
       },
-      select: {
-        id: true,
-        code: true,
-        name: true,
-        expectedReturnDate: true,
-        holder: { select: { fullName: true } },
-      },
-    }),
-    // By category
-    db.category.findMany({
-      orderBy: { sort: "asc" },
-      select: {
-        name: true,
-        _count: { select: { items: { where: { isDeleted: false } } } },
-      },
-    }),
-    // By location (for the locations panel)
-    db.location.findMany({
-      orderBy: { name: "asc" },
-      select: {
-        id: true,
-        name: true,
-        kind: true,
-        _count: {
-          select: { itemsCurrent: { where: { isDeleted: false } } },
-        },
-      },
-    }),
-    // Recent activity (last 5)
-    db.transaction.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 5,
-      include: {
-        item: { select: { id: true, code: true, name: true, isDeleted: true } },
-        person: { select: { fullName: true } },
-      },
-    }),
-    // Maintenance due soon (nextDue within 14 days, item not deleted)
-    db.maintenanceLog.findMany({
-      where: {
-        nextDue: { lte: new Date(Date.now() + 14 * 86400000) },
-        item: { isDeleted: false },
-      },
-      orderBy: { nextDue: "asc" },
-      take: 10,
-      select: {
-        id: true,
-        nextDue: true,
-        description: true,
-        item: { select: { id: true, code: true, name: true } },
-      },
-    }),
-  ]);
+    },
+  });
+
+  // Recent activity (last 5)
+  const recentActivity = await db.transaction.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    include: {
+      item: { select: { id: true, code: true, name: true, isDeleted: true } },
+      person: { select: { fullName: true } },
+    },
+  });
+
+  // Maintenance due soon (nextDue within 14 days, item not deleted)
+  const maintenanceDueSoon = await db.maintenanceLog.findMany({
+    where: {
+      nextDue: { lte: new Date(Date.now() + 14 * 86400000) },
+      item: { isDeleted: false },
+    },
+    orderBy: { nextDue: "asc" },
+    take: 10,
+    select: {
+      id: true,
+      nextDue: true,
+      description: true,
+      item: { select: { id: true, code: true, name: true } },
+    },
+  });
 
   return NextResponse.json({
     totalItems,

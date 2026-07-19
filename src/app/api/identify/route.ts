@@ -301,14 +301,16 @@ Rules:
 const VISION_TIMEOUT_MS = 30_000; // 30s per attempt
 const MAX_RETRIES = 2;
 
-// Google Gemini vision model. Defaults to Gemini 3 Flash; override with a
-// GEMINI_MODEL env var (e.g. "gemini-2.5-flash") without a code change.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+// Google Gemini vision model. Defaults to Gemini 3.5 Flash; override with a
+// GEMINI_MODEL env var (e.g. "gemini-3.1-flash-lite") without a code change.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.5-flash";
 
 // Gemini 3 controls reasoning via generationConfig.thinkingConfig.thinkingLevel
-// (default HIGH). Scanning is a quick recognition task, so keep it LOW for
-// speed and lower token cost. Older (2.x) models don't accept thinkingLevel.
+// (MINIMAL | LOW | MEDIUM | HIGH; default HIGH). Scanning is a recognition task,
+// so default to LOW for speed/cost — tune with a GEMINI_THINKING_LEVEL env var.
+// Older (2.x) models don't accept thinkingLevel and keep the temperature config.
 const IS_GEMINI_3 = GEMINI_MODEL.startsWith("gemini-3");
+const GEMINI_THINKING_LEVEL = (process.env.GEMINI_THINKING_LEVEL || "LOW").toUpperCase();
 
 async function callVisionModelWithRetry(
   imageBase64: string,
@@ -390,7 +392,7 @@ async function callVisionModel(
           generationConfig: IS_GEMINI_3
             ? {
                 responseMimeType: "application/json",
-                thinkingConfig: { thinkingLevel: "LOW" },
+                thinkingConfig: { thinkingLevel: GEMINI_THINKING_LEVEL },
               }
             : { temperature: 0.2, responseMimeType: "application/json" },
         }),

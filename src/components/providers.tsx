@@ -10,9 +10,14 @@ export function Providers({ children }: { children: React.ReactNode }) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            staleTime: 30 * 1000, // 30s
+            // Navigating back to a view within this window serves cached data
+            // instantly instead of re-hitting the (network-bound) API. Mutations
+            // still invalidate their queries, so data stays correct.
+            staleTime: 60 * 1000, // 60s
+            gcTime: 5 * 60 * 1000, // keep unused data cached for 5 min
             retry: 1,
             refetchOnWindowFocus: false,
+            refetchOnReconnect: false,
           },
         },
       })

@@ -125,7 +125,7 @@ export function DashboardView() {
       if (!res.ok) throw new Error("Failed to load stats");
       return res.json() as Promise<Stats>;
     },
-    staleTime: 10_000,
+    staleTime: 60_000,
   });
 
   return (
@@ -141,22 +141,22 @@ export function DashboardView() {
       {/* All registered accounts + role management — admin only */}
       <AccountsPanel />
 
-      {/* Row 1 — Stat pills (horizontal scroll with snap) */}
-      <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Row 1 — Stat pills (stacked, one full-width row each) */}
+      <div className="grid grid-cols-1 gap-3">
         {STAT_DEFS.map((s) => {
           const Icon = s.icon;
           const value = stats ? stats[s.key] : null;
           return (
             <div
               key={s.key}
-              className="glass-card flex min-w-[128px] snap-start flex-col gap-2 px-4 py-3"
+              className="glass-card flex items-center justify-between px-4 py-3.5"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <Icon size={16} style={{ color: s.color }} />
                 <span className="micro-label">{s.label}</span>
-                <Icon size={13} style={{ color: s.color }} />
               </div>
               <span
-                className="font-display text-3xl font-semibold"
+                className="font-display text-2xl font-semibold tabular-nums"
                 style={{ color: value !== null ? s.color : "var(--color-text-low)" }}
               >
                 {value ?? "—"}
@@ -463,7 +463,7 @@ function PendingApprovals() {
       return res.json() as Promise<{ users: PendingUser[] }>;
     },
     enabled: role === "admin",
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   // Only admins see this panel at all.

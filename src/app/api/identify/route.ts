@@ -286,6 +286,10 @@ Rules:
 const VISION_TIMEOUT_MS = 30_000; // 30s per attempt
 const MAX_RETRIES = 2;
 
+// Google Gemini vision model — free tier via a Google AI Studio API key.
+// Bump to a newer flash model here if desired (e.g. "gemini-2.5-flash").
+const GEMINI_MODEL = "gemini-2.0-flash";
+
 async function callVisionModelWithRetry(
   imageBase64: string,
   systemPrompt: string,
@@ -316,45 +320,75 @@ async function callVisionModel(
   imageBase64: string,
   systemPrompt: string
 ): Promise<string> {
-  const ZAI = (await import("z-ai-web-dev-sdk")).default;
-  const zai = await ZAI.create();
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured");
+  }
 
-  const imageUrl = imageBase64.startsWith("data:")
-    ? imageBase64
-    : `data:image/jpeg;base64,${imageBase64}`;
+  // Gemini wants raw base64 + an explicit mime type, so strip any data-URL prefix.
+  let mimeType = "image/jpeg";
+  let data = imageBase64;
+  if (imageBase64.startsWith("data:")) {
+    const comma = imageBase64.indexOf(",");
+    if (comma !== -1) {
+      mimeType = imageBase64.slice(5, comma).split(";")[0] || "image/jpeg";
+      data = imageBase64.slice(comma + 1);
+    }
+  }
 
-  // Wrap in a timeout — the free tier can queue and hang
+  // Wrap in a timeout — a hung request should fail fast, not block the route.
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), VISION_TIMEOUT_MS);
 
   try {
-    const response = await zai.chat.completions.createVision({
-      model: "glm-4.6v-flash",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
-          role: "user",
-          content: [
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [
             {
-              type: "text",
-              text: "Identify the tool(s) in this photo. Reply with only the JSON object.",
-            },
-            {
-              type: "image_url",
-              image_url: { url: imageUrl },
+              role: "user",
+              parts: [
+                {
+                  text: "Identify the tool(s) in this photo. Reply with only the JSON object.",
+                },
+                { inlineData: { mimeType, data } },
+              ],
             },
           ],
-        },
-      ],
-      thinking: { type: "disabled" },
-      // @ts-expect-error — abort signal passthrough if supported
-      signal: controller.signal,
-    });
+          generationConfig: {
+            temperature: 0.2,
+            responseMimeType: "application/json",
+          },
+        }),
+      }
+    );
 
-    return response.choices[0]?.message?.content ?? "";
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      // Include the status so callVisionModelWithRetry skips retries on 4xx.
+      throw new Error(`Gemini API ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const json = await res.json();
+    const parts = json?.candidates?.[0]?.content?.parts;
+    const text = Array.isArray(parts)
+      ? parts.map((p: { text?: string }) => p.text ?? "").join("")
+      : "";
+    if (!text) {
+      const finishReason = json?.candidates?.[0]?.finishReason;
+      const blockReason = json?.promptFeedback?.blockReason;
+      throw new Error(
+        `Gemini returned no content${finishReason ? ` (finish: ${finishReason})` : ""}${
+          blockReason ? ` (blocked: ${blockReason})` : ""
+        }`
+      );
+    }
+    return text;
   } catch (e) {
     if (e instanceof Error && e.name === "AbortError") {
       throw new Error("Vision model timeout");

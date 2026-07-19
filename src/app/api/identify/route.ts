@@ -301,10 +301,14 @@ Rules:
 const VISION_TIMEOUT_MS = 30_000; // 30s per attempt
 const MAX_RETRIES = 2;
 
-// Google Gemini vision model — free tier via a Google AI Studio API key.
-// Override with a GEMINI_MODEL env var (e.g. "gemini-2.5-flash",
-// "gemini-1.5-flash") without a code change.
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+// Google Gemini vision model. Defaults to Gemini 3 Flash; override with a
+// GEMINI_MODEL env var (e.g. "gemini-2.5-flash") without a code change.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3-flash-preview";
+
+// Gemini 3 controls reasoning via generationConfig.thinkingConfig.thinkingLevel
+// (default HIGH). Scanning is a quick recognition task, so keep it LOW for
+// speed and lower token cost. Older (2.x) models don't accept thinkingLevel.
+const IS_GEMINI_3 = GEMINI_MODEL.startsWith("gemini-3");
 
 async function callVisionModelWithRetry(
   imageBase64: string,
@@ -383,10 +387,12 @@ async function callVisionModel(
               ],
             },
           ],
-          generationConfig: {
-            temperature: 0.2,
-            responseMimeType: "application/json",
-          },
+          generationConfig: IS_GEMINI_3
+            ? {
+                responseMimeType: "application/json",
+                thinkingConfig: { thinkingLevel: "LOW" },
+              }
+            : { temperature: 0.2, responseMimeType: "application/json" },
         }),
       }
     );

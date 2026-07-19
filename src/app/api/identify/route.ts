@@ -176,6 +176,16 @@ export async function POST(req: Request) {
         { status: 504 }
       );
     }
+    if (msg.includes("429")) {
+      return NextResponse.json(
+        {
+          error:
+            "Scanning is rate-limited right now (AI free-tier quota). Wait a minute and try again, or add the item manually.",
+          detail: msg,
+        },
+        { status: 429 }
+      );
+    }
     return NextResponse.json(
       {
         error: "Could not analyse the photo. Please try again or add manually.",
@@ -308,9 +318,16 @@ async function callVisionModelWithRetry(
       return await callVisionModel(imageBase64, systemPrompt);
     } catch (e) {
       lastError = e;
-      // Don't retry on 4xx (client errors — bad image, etc.)
+      // Don't retry on client errors (bad image) or rate limits (429).
+      // Retrying a 429 immediately never clears within the same rate window
+      // and just burns more of the free-tier quota.
       const msg = e instanceof Error ? e.message : "";
-      if (msg.includes("400") || msg.includes("413") || msg.includes("422")) {
+      if (
+        msg.includes("400") ||
+        msg.includes("413") ||
+        msg.includes("422") ||
+        msg.includes("429")
+      ) {
         throw e;
       }
       // Exponential backoff: 500ms, 1000ms

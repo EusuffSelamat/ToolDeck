@@ -141,22 +141,27 @@ export function DashboardView() {
       {/* All registered accounts + role management — admin only */}
       <AccountsPanel />
 
-      {/* Row 1 — Stat pills (horizontal scroll with snap) */}
-      <div className="-mx-5 flex snap-x snap-mandatory gap-3 overflow-x-auto px-5 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {/* Row 1 — Stat pills (single row, 4 across) */}
+      <div className="grid grid-cols-4 gap-2">
         {STAT_DEFS.map((s) => {
           const Icon = s.icon;
           const value = stats ? stats[s.key] : null;
           return (
             <div
               key={s.key}
-              className="glass-card flex min-w-[128px] snap-start flex-col gap-2 px-4 py-3"
+              className="glass-card flex min-w-0 flex-col gap-1.5 px-2 py-3"
             >
-              <div className="flex items-center justify-between">
-                <span className="micro-label">{s.label}</span>
-                <Icon size={13} style={{ color: s.color }} />
+              <div className="flex items-start justify-between gap-1">
+                <span
+                  className="micro-label leading-[1.25]"
+                  style={{ letterSpacing: "0.05em" }}
+                >
+                  {s.label}
+                </span>
+                <Icon size={11} style={{ color: s.color, flexShrink: 0 }} />
               </div>
               <span
-                className="font-display text-3xl font-semibold"
+                className="font-display text-2xl font-semibold leading-none tabular-nums"
                 style={{ color: value !== null ? s.color : "var(--color-text-low)" }}
               >
                 {value ?? "—"}

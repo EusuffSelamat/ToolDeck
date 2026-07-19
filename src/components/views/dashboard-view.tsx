@@ -125,7 +125,7 @@ export function DashboardView() {
       if (!res.ok) throw new Error("Failed to load stats");
       return res.json() as Promise<Stats>;
     },
-    staleTime: 10_000,
+    staleTime: 60_000,
   });
 
   return (
@@ -468,7 +468,7 @@ function PendingApprovals() {
       return res.json() as Promise<{ users: PendingUser[] }>;
     },
     enabled: role === "admin",
-    refetchInterval: 30_000,
+    refetchInterval: 60_000,
   });
 
   // Only admins see this panel at all.

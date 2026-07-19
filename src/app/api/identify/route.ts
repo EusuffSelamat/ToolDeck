@@ -167,15 +167,20 @@ export async function POST(req: Request) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     console.error("Vision model call failed:", msg);
 
-    // Return a user-friendly error with the specific failure reason
+    // Return a user-friendly error with the specific failure reason.
+    // `detail` surfaces the underlying cause (config/model/API errors) so it
+    // can be diagnosed from the client without digging through server logs.
     if (msg.includes("timeout") || msg.includes("Timeout")) {
       return NextResponse.json(
-        { error: "The AI took too long to respond. Please try again." },
+        { error: "The AI took too long to respond. Please try again.", detail: msg },
         { status: 504 }
       );
     }
     return NextResponse.json(
-      { error: "Could not analyse the photo. Please try again or add manually." },
+      {
+        error: "Could not analyse the photo. Please try again or add manually.",
+        detail: msg,
+      },
       { status: 502 }
     );
   }
@@ -287,8 +292,9 @@ const VISION_TIMEOUT_MS = 30_000; // 30s per attempt
 const MAX_RETRIES = 2;
 
 // Google Gemini vision model — free tier via a Google AI Studio API key.
-// Bump to a newer flash model here if desired (e.g. "gemini-2.5-flash").
-const GEMINI_MODEL = "gemini-2.0-flash";
+// Override with a GEMINI_MODEL env var (e.g. "gemini-2.5-flash",
+// "gemini-1.5-flash") without a code change.
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 
 async function callVisionModelWithRetry(
   imageBase64: string,

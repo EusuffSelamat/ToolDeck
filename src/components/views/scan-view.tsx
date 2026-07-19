@@ -117,7 +117,9 @@ export function ScanView() {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.error ?? "AI identification failed");
+        const base = err.error ?? "AI identification failed";
+        // Surface the underlying reason (config/model/API error) when present.
+        throw new Error(err.detail ? `${base} — ${err.detail}` : base);
       }
 
       const data: IdentifyResult = await res.json();

@@ -141,27 +141,22 @@ export function DashboardView() {
       {/* All registered accounts + role management — admin only */}
       <AccountsPanel />
 
-      {/* Row 1 — Stat pills (single row, 4 across) */}
-      <div className="grid grid-cols-4 gap-2">
+      {/* Row 1 — Stat pills (stacked, one full-width row each) */}
+      <div className="grid grid-cols-1 gap-3">
         {STAT_DEFS.map((s) => {
           const Icon = s.icon;
           const value = stats ? stats[s.key] : null;
           return (
             <div
               key={s.key}
-              className="glass-card flex min-w-0 flex-col gap-1.5 px-2 py-3"
+              className="glass-card flex items-center justify-between px-4 py-3.5"
             >
-              <div className="flex items-start justify-between gap-1">
-                <span
-                  className="micro-label leading-[1.25]"
-                  style={{ letterSpacing: "0.05em" }}
-                >
-                  {s.label}
-                </span>
-                <Icon size={11} style={{ color: s.color, flexShrink: 0 }} />
+              <div className="flex items-center gap-2.5">
+                <Icon size={16} style={{ color: s.color }} />
+                <span className="micro-label">{s.label}</span>
               </div>
               <span
-                className="font-display text-2xl font-semibold leading-none tabular-nums"
+                className="font-display text-2xl font-semibold tabular-nums"
                 style={{ color: value !== null ? s.color : "var(--color-text-low)" }}
               >
                 {value ?? "—"}

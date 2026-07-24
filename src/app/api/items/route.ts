@@ -134,21 +134,60 @@ export async function GET(req: Request) {
   });
 }
 
-// POST /api/items — create a new item.
-// Assigns AST-####/STK-#### code, saves photo if provided, writes 'add' transaction.
-// Retries on code-collision (P2002) up to 3 times.
+// Inside your POST handler in src/app/api/items/route.ts
+
 export async function POST(req: Request) {
   const session = await requireAuth();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  const { name, brand, model, photoBase64 } = body;
+
+  if (!name) {
+    return NextResponse.json({ error: "Name is required" }, { status: 400 });
   }
-  // Viewers are read-only — they cannot add items.
-  if (!canOperate(session.user.role)) {
-    return NextResponse.json(
-      { error: "Your account is view-only. Ask an admin for access." },
-      { status: 403 }
-    );
+
+  let savedPhotoUrl = null;
+
+  // ── SAVE IMAGE LOGIC ──────────────────────────────────────
+  if (photoBase64 && typeof photoBase64 === "string") {
+    try {
+      // Strip the data URL prefix (e.g. "data:image/jpeg;base64,")
+      const matches = photoBase64.match(/^data:(.+);base64,(.*)$/);
+      if (matches) {
+        const ext = matches[1].split("/")[1]; // e.g., "jpeg" or "png"
+        const base64Data = matches[2];
+        const buffer = Buffer.from(base64Data, "base64");
+
+        // Create a unique filename
+        const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
+        const filepath = path.join(process.cwd(), "public", "item-photos", filename);
+
+        // Write the file to the public folder
+        await fs.promises.writeFile(filepath, buffer);
+
+        // Save the public URL path to the database
+        savedPhotoUrl = `/item-photos/${filename}`;
+      }
+    } catch (err) {
+      console.error("Failed to save image:", err);
+      // Don't fail the whole request, just save without the image
+    }
   }
+  // ── END SAVE IMAGE LOGIC ──────────────────────────────────
+
+  // Create the item in Prisma (include savedPhotoUrl if it exists)
+  const item = await db.item.create({
+    data: {
+      name,
+      brand: brand || null,
+      // ... your other fields ...
+      photoUrl: savedPhotoUrl, // Pass the saved URL here!
+    },
+  });
+
+  return NextResponse.json({ item });
+}
 
   const body = await req.json().catch(() => null);
   const parsed = itemCreateSchema.safeParse(body);

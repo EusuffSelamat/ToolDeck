@@ -11,6 +11,8 @@ import {
   type ItemListItem,
   type TrackingType,
 } from "@/lib/items";
+import fs from "fs";
+import path from "path";
 
 function safeInt(val: string | null, fallback: number): number {
   const n = parseInt(val ?? "", 10);
@@ -138,44 +140,109 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const session = await requireAuth();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json();
-  const { name, brand, model, photoBase64 } = body;
-
-  if (!name) {
-    return NextResponse.json({ error: "Name is required" }, { status: 400 });
+  if (!session) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!canOperate(session.user.role)) {
+    return NextResponse.json(
+      { error: "Your account is view-only. Ask an admin for access." },
+      { status: 403 }
+    );
   }
 
-  let savedPhotoUrl = null;
+  const body = await req.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
+  }
+
+  const parsed = itemCreateSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
+      { status: 400 }
+    );
+  }
+  const data = parsed.data;
 
   // ── SAVE IMAGE LOGIC ──────────────────────────────────────
+  let photoSaved = false;
+  let photoUrl: string | null = null;
+  
+  // Extract base64 photo from the raw body (in case Zod schema strips it)
+  const photoBase64 = body.photoBase64 as string | undefined;
+
   if (photoBase64 && typeof photoBase64 === "string") {
     try {
-      // Strip the data URL prefix (e.g. "data:image/jpeg;base64,")
       const matches = photoBase64.match(/^data:(.+);base64,(.*)$/);
       if (matches) {
         const ext = matches[1].split("/")[1]; // e.g., "jpeg" or "png"
         const base64Data = matches[2];
         const buffer = Buffer.from(base64Data, "base64");
 
-        // Create a unique filename
         const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
-        const filepath = path.join(process.cwd(), "public", "item-photos", filename);
         const dir = path.join(process.cwd(), "public", "item-photos");
+        
+        // Ensure the directory exists
         if (!fs.existsSync(dir)) {
           await fs.promises.mkdir(dir, { recursive: true });
-        }      
+        }
+        
+        const filepath = path.join(dir, filename);
         await fs.promises.writeFile(filepath, buffer);
 
-        // Save the public URL path to the database
-        savedPhotoUrl = `/item-photos/${filename}`;
+        photoUrl = `/item-photos/${filename}`;
+        photoSaved = true;
       }
     } catch (err) {
       console.error("Failed to save image:", err);
-      // Don't fail the whole request, just save without the image
+      // Don't fail the request, just save without the image
     }
   }
+
+  // Create item with retry logic for unique code generation
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const item = await db.item.create({
+        data: {
+          name: data.name,
+          brand: data.brand ?? null,
+          model: data.model ?? null,
+          // ⚠️ ADD YOUR OTHER PRISMA FIELDS HERE (serialNo, categoryId, etc.) ⚠️
+          photoUrl: photoSaved ? photoUrl : null,
+        },
+      });
+
+      return NextResponse.json(
+        { item: { id: item.id, code: item.code }, photoSaved },
+        { status: 201 }
+      );
+    } catch (e) {
+      lastError = e;
+
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2003") {
+        if (photoSaved && photoUrl) await deletePhoto(photoUrl).catch(() => {});
+        return NextResponse.json(
+          { error: "Selected category or location no longer exists." },
+          { status: 400 }
+        );
+      }
+
+      if (photoSaved && photoUrl) await deletePhoto(photoUrl).catch(() => {});
+      console.error("Item create failed:", e);
+      return NextResponse.json(
+        { error: "Could not create item. Please try again." },
+        { status: 500 }
+      );
+    }
+  }
+
+  console.error("Item create failed after retries:", lastError);
+  return NextResponse.json(
+    { error: "Could not assign a unique code. Please try again." },
+    { status: 503 }
+  );
+}
   // ── END SAVE IMAGE LOGIC ──────────────────────────────────
 
   // Create the item in Prisma (include savedPhotoUrl if it exists)
@@ -242,7 +309,7 @@ export async function POST(req: Request) {
             homeLocationId: data.homeLocationId || null,
             currentLocationId,
             notes: data.notes?.trim() || null,
-            photoUrl,
+            photoUrl: photoSaved ? photoUrl : null,
             aiConfidence: data.aiConfidence ?? null,
             createdBy: session.user.id,
           },

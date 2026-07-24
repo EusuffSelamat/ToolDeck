@@ -162,8 +162,10 @@ export async function POST(req: Request) {
         // Create a unique filename
         const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${ext}`;
         const filepath = path.join(process.cwd(), "public", "item-photos", filename);
-
-        // Write the file to the public folder
+        const dir = path.join(process.cwd(), "public", "item-photos");
+        if (!fs.existsSync(dir)) {
+          await fs.promises.mkdir(dir, { recursive: true });
+        }      
         await fs.promises.writeFile(filepath, buffer);
 
         // Save the public URL path to the database
